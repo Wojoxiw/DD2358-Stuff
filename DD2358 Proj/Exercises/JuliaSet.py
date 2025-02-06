@@ -1,6 +1,12 @@
 """Julia set generator without optional PIL-based image drawing"""
 import time
 from functools import wraps
+import numpy as np
+import line_profiler
+import atexit
+#profile = line_profiler.LineProfiler()
+#atexit.register(profile.print_stats)
+#from memory_profiler import profile
 
 # area of complex space to investigate
 x1, x2, y1, y2 = -1.8, 1.8, -1.8, 1.8
@@ -10,15 +16,20 @@ c_real, c_imag = -0.62772, -.42193
 def timefn(fn):
     @wraps(fn)
     def measure_time(*args, **kwargs):
-        t1 = time.time()
-        result = fn(*args, **kwargs)
-        t2 = time.time()
-        print(f"@timefn: {fn.__name__} took {t2 - t1} seconds")
+        numTries = 10
+        times = np.zeros(numTries)
+        for i in range(numTries):
+            t1 = time.time()
+            result = fn(*args, **kwargs)
+            t2 = time.time()
+            times[i] = t2-t1
+        print(f"@timefn: {fn.__name__} took an average of {np.mean(times):.4e} seconds, with a standard deviation of {np.std(times):.4e} s.")
         return result
     return measure_time
 
-
-def calc_pure_python(desired_width, max_iterations):
+#@timefn
+#@profile
+def calc_pure_python(desired_width, max_iterations, profiler = None):
     """Create a list of complex coordinates (zs) and complex parameters (cs),
     build Julia set"""
     x_step = (x2 - x1) / desired_width
@@ -44,18 +55,22 @@ def calc_pure_python(desired_width, max_iterations):
             zs.append(complex(xcoord, ycoord))
             cs.append(complex(c_real, c_imag))
 
-    print("Length of x:", len(x))
-    print("Total elements:", len(zs))
+    #print("Length of x:", len(x))
+    #print("Total elements:", len(zs))
     start_time = time.time()
+    #profiler.enable()
     output = calculate_z_serial_purepython(max_iterations, zs, cs)
+    #profiler.disable()
     end_time = time.time()
     secs = end_time - start_time
-    print(calculate_z_serial_purepython.__name__ + " took", secs, "seconds")
+    #print(calculate_z_serial_purepython.__name__ + " took", secs, "seconds")
 
     # This sum is expected for a 1000^2 grid with 300 iterations
     # It ensures that our code evolves exactly as we'd intended
     assert sum(output) == 33219980
-
+    
+#@timefn
+#@profile
 def calculate_z_serial_purepython(maxiter, zs, cs):
     """Calculate output list using Julia update rule"""
     output = [0] * len(zs)
