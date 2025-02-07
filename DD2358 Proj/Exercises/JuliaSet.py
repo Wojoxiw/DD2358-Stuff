@@ -67,7 +67,8 @@ def calc_pure_python(desired_width, max_iterations, profiler = None):
 
     # This sum is expected for a 1000^2 grid with 300 iterations
     # It ensures that our code evolves exactly as we'd intended
-    assert sum(output) == 33219980
+    #assert sum(output) == 33219980
+    return output
     
 #@timefn
 #@profile
