@@ -1,5 +1,6 @@
 ### Modification of scatt2d to handle 3d geometry
 # Stripped down for simplicity for DD2358 course
+# Simple scattering case of 2 antennas at a 90 degree angle, with a sphere in the center
 #
 # Daniel Sjoberg, 2024-12-13
 # Alexandros Pallaris, after that
@@ -7,6 +8,7 @@
 # use pytest
 # use pylint
 # use sphinx
+# use logging instead of printing, maybe?
 
 
 from mpi4py import MPI
@@ -19,12 +21,10 @@ from matplotlib import pyplot as plt
 import pyvista as pv
 import pyvistaqt as pvqt
 import functools
-import sys
 from timeit import default_timer as timer
 import sys, petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
-import postprocess3DStuff as pp3D
 from functools import wraps
 
 def timefn(fn):
@@ -37,14 +37,41 @@ def timefn(fn):
         return result
     return measure_time
 
-@timefn
-def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, viewGMSH=False): ## so this can be run iteratively from other scripts - currently starting with a cylinder in the middle
-    ## runName - this will be prepended to the various saved filenames
-    # folder - folder to save data and stuff in
-    # reference - runs without any defects contained in the mesh - possibly saves only what's needed for calculations, too
-    ## verbose - prints some extra stuff about how many freqs have been calculated (things you dont want to see when iterating)
-    # viewGMSH to just make the mesh, view it with fltk, then close
+
+
+def memTimeEstimation(folder, numCells = 0, Nf = 0, printPlots = False):
+    '''
+    Estimes the execution time and memory requirements of the Scatt3d run, based on previous runs.
     
+    Previous run information is stored in prevRuns.info in the folder.
+    Assumes that the memory cost scales with the volume of the computation/h^3 (the number of mesh cells).
+    Time taken should then scale with the memory times the number of frequency points.
+    
+    
+    :param folder: folder to store and retrieve prevRuns.info
+    :param numCells: estimated number of mesh cells, if asking for an estimated time/memory cost
+    :param Nf: number of freq. points, when asking for an estimated time
+    :param printPlots: if True, plots the memory and time requirements of previous runs, along with the fit used for estimation
+    '''
+    if(printPlots):
+        pass
+    
+    mem, time = 1, 1
+    return mem, time
+    
+
+
+@timefn
+def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, viewGMSH=False):
+    '''
+    Runs a scattering simulation
+
+    :param runName: this will be prepended to the various saved filenames
+    :param reference: runs without any defects contained in the mesh - possibly saves only what's needed for calculations, too
+    :param folder: folder to save data and stuff in
+    :param verbose: prints some extra stuff about how many freqs have been calculated (things you dont want to see when iterating)
+    :param viewGMSH: to just make the mesh, view it with fltk, then close
+    '''
     
     startTime = timer()
     
@@ -70,7 +97,6 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     h = lambda0/12                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
-    
     R_dom = 2*lambda0                 # Radius of domain
     d_pml = lambda0                    # Thickness of PML
     R_pml = R_dom + d_pml              # Outer radius of PML
@@ -85,33 +111,28 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     antenna_depth = lambda0/10      # Depth of antenna box
     antenna_z_offset = 0 #lambda0/2    # raise the antennas in z to create asymmetry in z
     kc = np.pi/antenna_width        # Cutoff wavenumber of antenna
-    N_antennas = 1                  # Number of antennas
-    if(runName.startswith('sphereScatt')):
-        print('Running a sphere scattering test')
-        N_antennas = 1 ## just 1 antenna if testing S11 with a sphere
-        Nf = 50 ## many freq points for a smoother graph
-        fvec = np.linspace(f1, f2, Nf)
-        R_sphere = 0.5*lambda0
+    N_antennas = 2                  # Number of antennas
+    
+    R_sphere = 0.5*lambda0          # Radius of the PEC sphere
     R_antennas = R_dom - .25*lambda0          # Radius at which antennas are placed - close to the edge, for maximum dist?
-    phi_antennas = np.linspace(0, 2*np.pi, N_antennas + 1)[:-1]
+    antenna_angular_spacing = 70         # angular spacing between the antennas
+    phi_antennas = np.linspace(0, np.pi/360*antenna_angular_spacing*(N_antennas + 1), N_antennas + 1)[:-1]
     pos_antennas = np.array([[R_antennas*np.cos(phi), R_antennas*np.sin(phi), antenna_z_offset] for phi in phi_antennas])
     rot_antennas = phi_antennas + np.pi/2
     
     # Background, DUT, and defect
     epsr_bkg = 1.0
     mur_bkg = 1.0
-    epsr_mat = 3.0*(1 - 0.01j)*0+1
-    epsr_defect = 2.5*(1 - 0.01j)*0+1
+    epsr_mat = 3.0*(1 - 0.01j) ## similar to 3-D printed plastic
+    epsr_defect = 2.5*(1 - 0.01j) ## something different than the material
     mur_mat = 1.0
     mur_defect = 1.0
-    
     
     # Set up mesh using gmsh
     gmsh.initialize()
     if comm.rank == model_rank:
         if(verbose):
-            estmem = pp3D.memoryTakenPlots( [height_pml*R_pml**2*pi/h**3] )
-            esttime = pp3D.timeTakenPlots( [height_pml*R_pml**2*pi/h**3*Nf] )
+            estmem, esttime = memTimeEstimation(folder, height_pml*R_pml**2*pi/h**3, Nf)
             print('Variables created, generating mesh...')
         # Typical mesh size
         gmsh.option.setNumber('General.Verbosity', 1)
@@ -143,31 +164,10 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
             inPECSurface.append(lambda x: np.allclose(x, x_pec[n,0]) or np.allclose(x, x_pec[n,1]) or np.allclose(x, x_pec[n,2]) or np.allclose(x, x_pec[n,3]) or np.allclose(x, x_pec[n,4]))
     
         # Create object and defect
-        sphereDimTags = [] ## will be empty unless it is a sphere run
-        if(runName.startswith('sphereScatt')): ## just a sphere, in the centre
-            disp =  -R_dom+R_sphere+lambda0*.05 #lambda0/1000 ## some tiny displacement so the center of mass isnt the same as the domain. Or a large displacement so it is far from the antenna
-            matDimTags = []
-            defectDimTags = []
-            sphereActual = gmsh.model.occ.addSphere(disp,0,0, R_sphere) ## the actual sphere should not be in matDimTags
-            sphereDimTags.append((tdim, sphereActual))
-            ## hopefully I can just append the surface to this, now (its based on CoM - so presumably just the center of the sphere? - this does catch the center of the domain and PML too, though):
-            inPECSurface.append(lambda x: np.allclose(x, np.array([disp,0,0])))
-        elif(runName.startswith('noObject')): ## don't create any object
-            matDimTags = []
-            defectDimTags = []
-        else:  # Just a cylinder inside a cylinder for now
-            # Object variables
-            R_cyl = .6*lambda0               # Radius of cylinder
-            height_cyl = .5*lambda0            # Height of cylinder
-            
-            defect_radius = 0.15*lambda0
-            
-            cylinder = gmsh.model.occ.addCylinder(0,0,-height_cyl/2,0,0,height_cyl,R_cyl)
-            matDimTags, matDimTagsMap = gmsh.model.occ.fuse([(tdim, cylinder)], [(tdim, cylinder)], removeTool = True)
-    
-            if (not reference):
-                defect1 = gmsh.model.occ.addCylinder(0,0,-height_cyl/2*.8,0,0,height_cyl*.8, defect_radius)
-                defectDimTags, defectDimTagsMap = gmsh.model.occ.fuse([(tdim, defect1)], [(tdim, defect1)], removeTool = True)
+        matDimTags = []; defectDimTags = []
+        sphereActual = gmsh.model.occ.addSphere(0,0,0, R_sphere) ## the actual sphere is my object here
+        matDimTags.append((tdim, sphereActual))
+        ##possibly make some defects in the sphere, later
     
         # Create domain and PML region
         domain_cyl = gmsh.model.occ.addCylinder(0, 0, -height_dom/2, 0, 0, height_dom, R_dom)
@@ -175,7 +175,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
         pml_cyl = gmsh.model.occ.addCylinder(0, 0, -height_pml/2, 0, 0, height_pml, R_pml)
         pml = [(tdim, pml_cyl)] # dim, tags
         if(d_spheroid>0): ## add a spheroid domed top and bottom with some specified extra height, that passes through the cylindrical 'corner' (to try to avoid waves being parallel to the PML)
-            
+
             R_extra_spheroid_dom = R_dom*(-1 + np.sqrt(1-( 1 - 1/(1- (height_dom/2/(height_dom/2+d_spheroid))**2 ) )) )       # how far beyond the domain the spheroid goes, radially. this will not actually be part of the domain. find using optimization
             a_dom = (height_dom/2+d_spheroid)/(R_dom+R_extra_spheroid_dom)
             domain_spheroid = gmsh.model.occ.addSphere(0, 0, 0, R_dom+R_extra_spheroid_dom)
@@ -193,15 +193,9 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
             pml = gmsh.model.occ.fuse([(tdim, pml_cyl)], domed_ceilings[0])[0]
     
         # Create fragments and dimtags
-        outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + sphereDimTags + antennas_DimTags)
-        if(runName.startswith('sphereScatt')):
-            removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-(N_antennas+1):]]] ## also the sphere
-        else:
-            removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-N_antennas:]]]
-        if (reference): ## no defects
-            defectDimTags = []
-        else:
-            defectDimTags = [x[0] for x in outDimTagsMap[3:] if x[0] not in removeDimTags]
+        outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + antennas_DimTags)
+        removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-N_antennas:]]]
+        defectDimTags = [x[0] for x in outDimTagsMap[3:] if x[0] not in removeDimTags]
         matDimTags = [x for x in outDimTagsMap[2] if x not in defectDimTags]
         domainDimTags = [x for x in outDimTagsMap[1] if x not in removeDimTags+matDimTags+defectDimTags]
         pmlDimTags = [x for x in outDimTagsMap[0] if x not in domainDimTags+defectDimTags+matDimTags+removeDimTags]
@@ -219,8 +213,6 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
         antenna_surface = []
         for boundary in gmsh.model.occ.getEntities(dim=fdim):
             CoM = gmsh.model.occ.getCenterOfMass(boundary[0], boundary[1])
-            ##for sphere, not sure where the center of mass should be
-            
             for n in range(len(inPECSurface)): ## iterate over all of these
                 if inPECSurface[n](CoM):
                     pec_surface.append(boundary[1])
@@ -291,16 +283,24 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     
     # Set up PML layer
     def pml_stretch(y, x, k0, x_dom=0, x_pml=1, n=3, R0=1e-10):
+        '''
+        Calculates the PML stretching of a coordinate
+        :param y: the coordinate to be stretched
+        :param x: the coordinate the stretching is based on
+        :param k0: wavenumber
+        :param x_dom: height of domain
+        :param x_pml: height of pml
+        :param n: order
+        :param R0: intended damping (based on relative strength of reflection?)
+        '''
         return y*(1 - 1j*(n + 1)*np.log(1/R0)/(2*k0*np.abs(x_pml - x_dom))*((x - x_dom)/(x_pml - x_dom))**n)
     
     def pml_epsr_murinv(pml_coords):
+        '''
+        Transforms the given coordinates into stretched coordinates (this implements the pml)
+        :param pml_coords: the coordinates
+        '''
         J = ufl.grad(pml_coords)
-    
-        # Transform the 2x2 Jacobian into a 3x3 matrix.
-        #r_pml = ufl.sqrt(pml_coords[0]**2 + pml_coords[1]**2)
-        #J = ufl.as_matrix(((J[0, 0], J[0, 1], 0),
-        #                   (J[1, 0], J[1, 1], 0),
-        #                   (0, 0, r_pml / r)))
         A = ufl.inv(J)
         epsr_pml = ufl.det(J) * A * epsr * ufl.transpose(A)
         mur_pml = ufl.det(J) * A * mur * ufl.transpose(A)
@@ -316,15 +316,17 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     z_stretched = pml_stretch(z, abs(z), k0, x_dom=height_dom_spheroid, x_pml=height_pml_spheroid) ## /2 since the height is from - to +
     x_pml = ufl.conditional(ufl.ge(abs(r), R_dom), x_stretched, x) ## stretch when outside radius of the domain
     y_pml = ufl.conditional(ufl.ge(abs(r), R_dom), y_stretched, y) ## stretch when outside radius of the domain
-    z_pml = ufl.conditional(ufl.ge(abs(z), height_dom_spheroid), z_stretched, z) ## stretch when outside the height of the cylinder of the domain (or oblate spheroid roof with factor a_dom/a_pml - should only be higher/lower inside the domain)
+    z_pml = ufl.conditional(ufl.ge(abs(z), height_dom_spheroid), z_stretched, z) ## stretch when outside the height of the cylinder of the domain (or oblate spheroid roof with factor a_dom/a_pml - should only be higher/lower inside the domain radially)
     pml_coords = ufl.as_vector((x_pml, y_pml, z_pml))
     epsr_pml, murinv_pml = pml_epsr_murinv(pml_coords)
     
-    
-    
     # Excitation and boundary conditions
     def Eport(x, pol=polarization):
-        """Compute the normalized electric field distribution in all ports."""
+        """
+        Compute the normalized electric field distribution in all ports.
+        :param x: some given position you want to find the field on
+        :param pol: option to change the polarization of the antennas (untested)
+        """
         Ep = np.zeros((3, x.shape[1]), dtype=complex)
         for p in range(N_antennas):
             center = pos_antennas[p]
@@ -350,6 +352,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
             Ep_global = np.dot(Rmat, Ep_loc)
             Ep = Ep + Ep_global
         return Ep
+    
     Ep = dolfinx.fem.Function(Vspace)
     Ep.interpolate(lambda x: Eport(x))
     
@@ -382,6 +385,9 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     )
     
     def ComputeFields():
+        '''
+        Computes the fields
+        '''
         S = np.zeros((Nf, N_antennas, N_antennas), dtype=complex)
         solutions = []
         for nf in range(Nf):
@@ -436,6 +442,14 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     bb_tree = dolfinx.geometry.bb_tree(mesh, mesh.topology.dim)
     cell_volumes = dolfinx.fem.assemble_vector(dolfinx.fem.form(ufl.conj(ufl.TestFunction(Wspace))*ufl.dx)).array
     def q_func(x, Em, En, k0, conjugate=False):
+        '''
+        Does stuff
+        :param x:
+        :param Em:
+        :param En:
+        :param k0:
+        :param conjugate:
+        '''
         cells = []
         cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
         colliding_cells = dolfinx.geometry.compute_colliding_cells(mesh, cell_candidates, x.T)
@@ -475,7 +489,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     xdmf.close()
     
     ###if trying to plot phase, save the final freq. point as different timestamps:
-    if(True):### make this True to animate the final fields
+    if(True): ### make this True to make a phase-animation of the final fields (cannot figure out how to do this inside paraview)
         xdmf = dolfinx.io.XDMFFile(comm=comm, filename=folder+'/'+runName+'outputPhaseAnimation.xdmf', file_mode='w')
         xdmf.write_mesh(mesh)
         Nframes = 50
@@ -498,14 +512,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
 
 ##MAIN STUFF
 if __name__ == '__main__':
-    #runName = '3dtest3' ## just testing - constantly overwritten
-    #runName = 'sphereScattNoSphereFixed' ## one antenna, simple PEC sphere object - to calculate S11 and compare with theory. Here the sphere is set to epsr=1, no PEC, antenna_offset_z = lambda/2
-    #runName = 'sphereScattTest' ## one antenna, simple PEC sphere object - to calculate S11 and compare with theory
-    #runName = 'sphereScattTestFF' ## one antenna, simple PEC sphere object, now placed as far away as possible - to calculate S11 and compare with theory
-    #runName = 'noObjectTest' ## one antenna, no object. Just to see the waves - h = l0/12
-    #runName = 'noObjectTesthsmaller' ## one antenna, no object. small radius. Just to see the waves - h = l0/18 (this is near my memory limit)
-    runName = 'noObjectTestDomedBoundaries' ## one antenna, no object. testing domed domain and pml
- 
+    runName = 'test' ## one antenna, no object. testing domed domain and pml
     folder = '/mnt/d/Microwave Imaging/data3D'
      
     runScatt3d(runName = runName, reference = True, folder = folder, viewGMSH = False)
