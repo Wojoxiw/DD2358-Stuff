@@ -26,22 +26,12 @@ import sys, petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
 from functools import wraps
+import psutil
+import scipy
 
-def timefn(fn):
-    @wraps(fn)
-    def measure_time(*args, **kwargs):
-        t1 = timer()
-        result = fn(*args, **kwargs)
-        t2 = timer()
-        print(f'@timefn: {fn.__name__} took {t2-t1} seconds ({(t2-t1)/3600:.3f} hours)')
-        return result
-    return measure_time
-
-
-
-def memTimeEstimation(folder, numCells = 0, Nf = 0, printPlots = False):
+def memTimeEstimation(numCells = 0, Nf = 0, folder = '/mnt/d/Microwave Imaging/data3D', printPlots = False):
     '''
-    Estimes the execution time and memory requirements of the Scatt3d run, based on previous runs.
+    Estimates the execution time and memory requirements of the Scatt3d run, based on previous runs.
     
     Previous run information is stored in prevRuns.info in the folder.
     Assumes that the memory cost scales with the volume of the computation/h^3 (the number of mesh cells).
@@ -53,15 +43,74 @@ def memTimeEstimation(folder, numCells = 0, Nf = 0, printPlots = False):
     :param Nf: number of freq. points, when asking for an estimated time
     :param printPlots: if True, plots the memory and time requirements of previous runs, along with the fit used for estimation
     '''
+    data = np.loadtxt(folder+'/prevRuns.info', skiprows = 1) ## mems, times, ncells, Nfs
+    
+    line = lambda x, a, b: a*x + b # just fit the data to a line
+    
+    ###############
+    # TIME STUFF
+    ###############
+    idx = np.argsort(data[:,1]) ## sort by time
+    times, ncells, Nfs = data[idx, 1], data[idx, 2], data[idx, 3]
+    fit = scipy.optimize.curve_fit(line, ncells*Nfs, times)[0]
+    time = line(numCells*Nf, fit[0], fit[1])
+    
     if(printPlots):
-        pass
+        xs = np.linspace(np.min(ncells*Nfs), np.max(ncells*Nfs), 1000)
+        plt.plot(ncells, times/3600, '-o', label='runs on computer')
+        plt.title('Computation time by size')
+        plt.xlabel(r'# of mesh cells times # of frequencies')
+        plt.ylabel('Time [hours]')
+        plt.grid()
+        plt.plot(xs, line(xs, fit[0], fit[1])/3600, label='curve_fit')
+        if(numCells>0 and Nf>0):
+            plt.scatter(numCells*Nf, time/3600, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Time')
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+
+    ###############
+    # MEMORY STUFF
+    ###############
+    idxMemsRecorded = np.argwhere(data[:,0] > 0)[:, 0] ## only take data where the memory cost is actually recorded, for memory estimation
+    mems, ncells = data[idxMemsRecorded, 0], data[idxMemsRecorded, 2]
+    idx = np.argsort(mems) ## sort by mem
+    mems, ncells= mems[idx], ncells[idx]
     
-    mem, time = 1, 1
+    fitMem = scipy.optimize.curve_fit(line, ncells, mems)[0]
+    mem = line(numCells*Nf, fitMem[0], fitMem[1])
+    
+    if(printPlots):
+        xs = np.linspace(np.min(ncells), np.max(ncells), 1000)
+        plt.plot(ncells, mems/1000, '-o', label='runs on computer')
+        plt.title('Memory Requirements by size')
+        plt.xlabel(r'# of mesh cells')
+        plt.ylabel('Memory [GB] (Approximate)')
+        plt.grid()
+        plt.plot(xs, line(xs, fitMem[0], fitMem[1])/3600, label='curve_fit')
+        if(numCells>0 and Nf>0):
+            plt.scatter(numCells, mem/1000, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Memory')
+        plt.legend()
+        plt.tight_layout()
+        plt.show()
+    
+    
     return mem, time
+
+def memTimeAppend(numCells, Nf, mem, time, folder = '/mnt/d/Microwave Imaging/data3D'):
+    '''
+    Appends a run's data to the estimation datafile
+    
+    :param folder: folder to store and retrieve prevRuns.info
+    :param numCells: estimated number of mesh cells, if asking for an estimated time/memory cost
+    :param Nf: number of freq. points, when asking for an estimated time
+    '''
+    file = open(folder+'/prevRuns.info','a')
+    #file.write("\n")
+    np.savetxt(file, np.array([mem, time, numCells, Nf]).reshape(1, 4), fmt='%1.5e')
+    file.close()
     
 
-
-@timefn
 def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, viewGMSH=False):
     '''
     Runs a scattering simulation
@@ -132,8 +181,11 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     gmsh.initialize()
     if comm.rank == model_rank:
         if(verbose):
-            estmem, esttime = memTimeEstimation(folder, height_pml*R_pml**2*pi/h**3, Nf)
+            size = 10
+            estmem, esttime = memTimeEstimation(size, Nf, folder)
             print('Variables created, generating mesh...')
+            print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
+            print(f'Estimated computation time for size {size:.3e}, Nf = {Nf}: {esttime/3600:.3f} hours')
         # Typical mesh size
         gmsh.option.setNumber('General.Verbosity', 1)
         gmsh.option.setNumber("Mesh.CharacteristicLengthMin", h) ## minimum mesh size
@@ -225,8 +277,8 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
         gmsh.model.mesh.generate(tdim)
         gmsh.write('tmp.msh')
         if(verbose):
-            t2=timer()
-            print('Mesh created in '+str(t2-startTime)+' s')
+            mesht = timer() - startTime
+            print('Mesh created in '+str(mesht)+' s')
         if viewGMSH: ## show the mesh, then stop
             gmsh.fltk.run()
             exit()
@@ -237,6 +289,9 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
         pml_marker = None
         pec_surface_marker = None
         antenna_surface_markers = None
+        
+    tcomp1 = timer() ## start timing the remainder of the script
+        
     mat_marker = comm.bcast(mat_marker, root=model_rank)
     defect_marker = comm.bcast(defect_marker, root=model_rank)
     domain_marker = comm.bcast(domain_marker, root=model_rank)
@@ -421,7 +476,6 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
             solutions.append(sols)
         return S, solutions
     
-    tcomp1 = timer()
     print(f'Rank {comm.rank}: Computing REF solutions')
     sys.stdout.flush()
     epsr.x.array[:] = epsr_array_ref
@@ -499,14 +553,18 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
         xdmf.close()
     ###
     
-    tcomp2 = timer()
-    print('Computations completed in',tcomp2-tcomp1,'s,',(tcomp2-tcomp1)/3600,'hours')
+    compt = timer() - tcomp1
+    print('Computations completed in',compt,'s,',compt/3600,'hours')
+    
     
     if comm.rank == model_rank: # Save global values for further postprocessing
         if(reference): ## less stuff to save
             np.savez(folder+'/'+runName+'output.npz', fvec=fvec, S_ref=S_ref, epsr_mat=epsr_mat, epsr_defect=epsr_defect)
         else:
             np.savez(folder+'/'+runName+'output.npz', b=b, fvec=fvec, S_ref=S_ref, S_dut=S_dut, epsr_mat=epsr_mat, epsr_defect=epsr_defect)
+    
+    ### save mem/time requirements for later use
+    memTimeAppend(Nepsr, Nf, 0, compt+mesht, folder) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
     
     ### could possibly try adapting the 2D video-plotting here
 
@@ -515,4 +573,5 @@ if __name__ == '__main__':
     runName = 'test' ## one antenna, no object. testing domed domain and pml
     folder = '/mnt/d/Microwave Imaging/data3D'
      
+    #memTimeEstimation(printPlots = True)
     runScatt3d(runName = runName, reference = True, folder = folder, viewGMSH = False)

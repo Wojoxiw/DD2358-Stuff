@@ -1,38 +1,18 @@
-'''
-Created on 4 feb. 2025
-
-@author: al8032pa
-'''
-
-from Assignment_2_DGEMMstuff import DGEMMarray, DGEMMnumpy, DGEMMlist
+from Scatt3D import memTimeEstimation
 import pytest
 import numpy as np
 
 @pytest.fixture(autouse=True)
-def get_DGEMM_test_data():
-    N = 10
-    return [(np.identity(N), np.identity(N), np.identity(N), np.identity(N)*2)]
+def get_test_data():
+    try1 = [1e5, 1] # [num_cells, num_freqs] - small
+    try2 = [1e6, 40] # large
+    return [(try1, try2)]
 
-def test_DGEMMarray(get_DGEMM_test_data):
+def test_memEst(get_DGEMM_test_data):
     for data in get_DGEMM_test_data:
-        A = data[0]
-        B = data[1]
-        C = data[2]
-        assert np.allclose(DGEMMarray(A, B, C), data[3] )
-        
-def test_DGEMMlist(get_DGEMM_test_data):
-    for data in get_DGEMM_test_data:
-        A = data[0]
-        B = data[1]
-        C = data[2]
-        assert np.allclose(DGEMMlist(A, B, C), data[3] )
-        
-def test_DGEMMnumpy(get_DGEMM_test_data):
-    for data in get_DGEMM_test_data:
-        A = data[0]
-        B = data[1]
-        C = data[2]
-        assert np.allclose(DGEMMnumpy(A, B, C), data[3] )
+        estMem, estTime = memTimeEstimation(data[0], data[1])
+        assert (estMem > 1) & (estTime > 1)
+        assert (estMem < 1e30) & (estTime < 1e30)
     
 if __name__ == '__main__':
     args_str = "-v -s"
