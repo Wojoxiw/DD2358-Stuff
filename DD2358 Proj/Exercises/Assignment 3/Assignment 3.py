@@ -129,7 +129,6 @@ def task1p7():
         gauss_seidel_iterator(x, CuPyfn, nIterations)
         timesCuPy[j] = timer() - timeStart
         
-    
     plt.xlabel('Grid Size')
     plt.ylabel('Computation Time [s]')
     plt.yscale('log')

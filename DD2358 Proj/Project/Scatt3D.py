@@ -29,6 +29,8 @@ from functools import wraps
 import psutil
 import scipy
 
+from memory_profiler import memory_usage
+
 def memTimeEstimation(numCells = 0, Nf = 0, folder = '/mnt/d/Microwave Imaging/data3D', printPlots = False):
     '''
     Estimates the execution time and memory requirements of the Scatt3d run, based on previous runs.
@@ -97,19 +99,21 @@ def memTimeEstimation(numCells = 0, Nf = 0, folder = '/mnt/d/Microwave Imaging/d
     
     return mem, time
 
-def memTimeAppend(numCells, Nf, mem, time, folder = '/mnt/d/Microwave Imaging/data3D'):
+def memTimeAppend(numCells, Nf, mem, time, reference, folder = '/mnt/d/Microwave Imaging/data3D'):
     '''
     Appends a run's data to the estimation datafile
     
     :param folder: folder to store and retrieve prevRuns.info
     :param numCells: estimated number of mesh cells, if asking for an estimated time/memory cost
     :param Nf: number of freq. points, when asking for an estimated time
+    :param mem: max. memory usage, in GiB
+    :param time: total runTime, in s
+    :param reference: True if this is a reference run (prints 1), False (or 0) otherwise
     '''
     file = open(folder+'/prevRuns.info','a')
     #file.write("\n")
-    np.savetxt(file, np.array([mem, time, numCells, Nf]).reshape(1, 4), fmt='%1.5e')
+    np.savetxt(file, np.array([mem, time, numCells, Nf, reference]).reshape(1, 5), fmt='%1.5e')
     file.close()
-    
 
 def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, viewGMSH=False):
     '''
@@ -146,12 +150,12 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     h = lambda0/12                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
-    R_dom = 2*lambda0                 # Radius of domain
+    R_dom = 1*lambda0                 # Radius of domain
     d_pml = lambda0                    # Thickness of PML
     R_pml = R_dom + d_pml              # Outer radius of PML
-    height_dom = 1.2*lambda0           # Height of domain - goes from -height/2 to height/2
+    height_dom = .8*lambda0           # Height of domain - goes from -height/2 to height/2
     height_pml = height_dom + 2*d_pml  # Height of PML - goes from -height/2 to height/2
-    d_spheroid = 0.4*lambda0           # max. extra thickness/height of the oblate spheroid added to the domain and pml to obtain a domed ceiling
+    d_spheroid = 0.2*lambda0           # max. extra thickness/height of the oblate spheroid added to the domain and pml to obtain a domed ceiling
     
     # Antennas - using a box where 1 surface is the antenna
     polarization = 'vert'           # Choose between 'vert' and 'horiz'
@@ -165,7 +169,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     R_sphere = 0.5*lambda0          # Radius of the PEC sphere
     R_antennas = R_dom - .25*lambda0          # Radius at which antennas are placed - close to the edge, for maximum dist?
     antenna_angular_spacing = 70         # angular spacing between the antennas
-    phi_antennas = np.linspace(0, np.pi/360*antenna_angular_spacing*(N_antennas + 1), N_antennas + 1)[:-1]
+    phi_antennas = np.linspace(0, 2*np.pi/360*antenna_angular_spacing*(N_antennas), N_antennas + 1)[:-1]
     pos_antennas = np.array([[R_antennas*np.cos(phi), R_antennas*np.sin(phi), antenna_z_offset] for phi in phi_antennas])
     rot_antennas = phi_antennas + np.pi/2
     
@@ -554,7 +558,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
     ###
     
     compt = timer() - tcomp1
-    print('Computations completed in',compt,'s,',compt/3600,'hours')
+    print('Computations completed in',compt,'s,',compt/3600,'hours. Max. memory usage:',mem_usage,'MiB')
     
     
     if comm.rank == model_rank: # Save global values for further postprocessing
@@ -564,7 +568,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D', verbose=True, view
             np.savez(folder+'/'+runName+'output.npz', b=b, fvec=fvec, S_ref=S_ref, S_dut=S_dut, epsr_mat=epsr_mat, epsr_defect=epsr_defect)
     
     ### save mem/time requirements for later use
-    memTimeAppend(Nepsr, Nf, 0, compt+mesht, folder) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
+    memTimeAppend(Nepsr, Nf, 0, compt+mesht, reference, folder) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
     
     ### could possibly try adapting the 2D video-plotting here
 
@@ -574,4 +578,8 @@ if __name__ == '__main__':
     folder = '/mnt/d/Microwave Imaging/data3D'
      
     #memTimeEstimation(printPlots = True)
-    runScatt3d(runName = runName, reference = True, folder = folder, viewGMSH = False)
+    mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
+    
+    
+    print(mem_usage)
+    print('Max. memory:',mem_usage/1000,'GiB')
