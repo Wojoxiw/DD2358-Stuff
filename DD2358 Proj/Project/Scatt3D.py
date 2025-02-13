@@ -583,3 +583,5 @@ if __name__ == '__main__':
     
     print(mem_usage)
     print('Max. memory:',mem_usage/1000,'GiB')
+    
+    print('Haha just testing, there is no mem. usage')
