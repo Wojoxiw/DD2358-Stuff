@@ -15,7 +15,7 @@ cat $0 ## unix command - outputs this script to the top of the job's output file
 date ## prints current date/time
 
 echo "hello from $HOSTNAME:" $HOSTNAME ## some unix script
-cp -p Scatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory
+cp -p Scatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory. I first update it with git pull origin master
 cd $SNIC_TMP ## go to that directory
 		 
 time python Scatt3D.py ### then run it... and time it
