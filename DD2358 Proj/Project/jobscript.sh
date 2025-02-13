@@ -8,21 +8,17 @@
 #
 #SBATCH -o result_filename_%j.out ## result filename, %j becomes the job number
 #SBATCH -e result_filename_%j.err ## errors filename - should be empty unless an error occurs
-#SBATCH -J JOBNAME_12 ##puts a job name, to identify it
-#
-#SBATCH --mail-user=alexandros.pallaris@eit.lth.se   ## to get email spammed
-#SBATCH --mail-type=END ## get emailed as it ends. can also be BEGIN/FAIL/TIME_LIMIT/TIME_LIMIT_90 ##90% of the time has gone, or xx %
+#SBATCH -J TEST_01_ ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 
 date ## prints current date/time
 
 echo "hello from $HOSTNAME:" $HOSTNAME ## some unix script
-## import some python script to run
-cp -p input.py $SNIC_TMP ## reads this file into the node-local disk/execution directory
+cp -p Scatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory
 cd $SNIC_TMP ## go to that directory
-			 
-time python input.py ### then run it... and time it
+		 
+time python Scatt3D.py ### then run it... and time it
 cp -p result.dat $SLURM_SUBMIT_DIR ## copies this file out to the submission directory-whatever directory you were in when using sbatch jobscript.sh
 
 ## save this in .sh script, maybe make it using nano run_scipt.sh
