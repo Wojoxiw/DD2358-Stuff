@@ -578,8 +578,8 @@ if __name__ == '__main__':
     folder = '/mnt/d/Microwave Imaging/data3D'
      
     #memTimeEstimation(printPlots = True)
-    mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
-    
+    #mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
+    mem_usage = 3
     
     print(mem_usage)
     print('Max. memory:',mem_usage/1000,'GiB')
