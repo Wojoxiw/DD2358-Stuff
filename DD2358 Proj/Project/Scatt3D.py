@@ -25,10 +25,8 @@ from timeit import default_timer as timer
 import sys, petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
-from functools import wraps
 import psutil
 import scipy
-
 from memory_profiler import memory_usage
 
 def memTimeEstimation(numCells = 0, Nf = 0, folder = '/mnt/d/Microwave Imaging/data3D', printPlots = False):
@@ -45,7 +43,7 @@ def memTimeEstimation(numCells = 0, Nf = 0, folder = '/mnt/d/Microwave Imaging/d
     :param Nf: number of freq. points, when asking for an estimated time
     :param printPlots: if True, plots the memory and time requirements of previous runs, along with the fit used for estimation
     '''
-    data = np.loadtxt(folder+'/prevRuns.info', skiprows = 1) ## mems, times, ncells, Nfs
+    data = np.loadtxt(folder+'/prevRuns.info', skiprows = 2) ## mems, times, ncells, Nfs
     
     line = lambda x, a, b: a*x + b # just fit the data to a line
     
