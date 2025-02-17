@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --qos=test  ## to run a quick, high-priority test (should be very quick)
+# ###SBATCH --qos=test  ## to run a quick, high-priority test (should be very quick)
 #SBATCH -t 00:05:00 ## job is killed after this time - overestimate
 #SBATCH -A lu2024-2-93 ##from projinfo command
 

@@ -5,7 +5,7 @@ First download my python scripts from github with:
 
 #git clone -n --depth=1 --filter=tree:0 https://github.com/Wojoxiw/DD2358-Stuff
 #cd "DD2358-Stuff"
-#git sparse-checkout set --no-cone "/DD2358 Proj/Project"				
+#git sparse-checkout set --no-cone "/DD2358_Proj/Project"				
 #git checkout
 git fetch --all ## to update the scripts (overwriting local changes)
 git reset --hard origin/master
