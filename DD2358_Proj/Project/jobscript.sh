@@ -8,18 +8,14 @@
 
 #SBATCH -o %j_result.out ## result filename, %j becomes the job number
 #SBATCH -e %j_result.err ## errors filename - should be empty unless an error occurs
-#SBATCH -J TEST_Trans ##puts a job name, to identify it
+#SBATCH -J scatt-test ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 
 echo "  hello from $HOSTNAME:" $HOSTNAME ## some unix script
 echo "jobscript listed above, date listed below..."
 date ## prints current date/time
-
-## first download my python scripts from github with: git clone -n --depth=1 --filter=tree:0 https://github.com/Wojoxiw/DD2358-Stuff
-												##	  cd "DD2358-Stuff"
-												##    git sparse-checkout set --no-cone "/DD2358 Proj/Project"				
-												##	  git checkout								
+							
 cp -p Scatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory. I first update it with git pull origin master
 cp -p prevRuns.info $SNIC_TMP
 cd $SNIC_TMP ## go to that directory
