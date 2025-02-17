@@ -582,5 +582,5 @@ if __name__ == '__main__':
     mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
     
     print('Max. memory:',mem_usage/1000,'GiB')
-    memTimeAppend(Nepsr, Nf, 0, totT) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
+    memTimeAppend(Nepsr, Nf, mem_usage, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
     

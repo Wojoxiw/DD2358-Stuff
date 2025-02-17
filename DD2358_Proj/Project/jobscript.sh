@@ -23,6 +23,7 @@ cd $SNIC_TMP ## go to that directory
 time python Scatt3D.py ### then run it... and time it
 
 cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to the submission directory-whatever directory you were in when using sbatch jobscript.sh - should now be updated with whatever the runtime was
+cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also
 ## then sync output folder with my local output folder, so I have the files locally... by running the following script locally, afterward
 #rsync -a alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/PreTestingStuff/FileTransferTest/ "/mnt/d/Microwave Imaging/LUNARC_file_transferring_folder"
 #rsync -a alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/PreTestingStuff/FileTransferTest/prevRuns.info "/mnt/d/Microwave Imaging/repository/DD2358 Proj/Project/prevRuns.info"
