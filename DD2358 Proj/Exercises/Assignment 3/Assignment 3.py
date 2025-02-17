@@ -34,7 +34,6 @@ def gauss_seidel_iterator(x, fun, nIterations): ## plots performance by grid siz
         x = fun(x)
     return x
         
-    
         
     
 def task1p1():
@@ -101,14 +100,14 @@ def task1p4():
     
 def task1p7():
     print('Task 1.7: Gauss-Seidal solver: cython vs original vs CuPy vs PyTorch')
-    nIterations = 1000
-    gridSizes = np.arange(10, 300, 10)
+    nIterations = 1000 
+    gridSizes = np.arange(10, 800, 10)
     times = np.zeros(np.shape(gridSizes))
     timesCython = np.zeros(np.shape(gridSizes))
     timesPyTorch = np.zeros(np.shape(gridSizes))
     timesCuPy = np.zeros(np.shape(gridSizes))
     for j in range(len(gridSizes)):
-        if(j%5 == 1):
+        if(j%3 == 1):
             print(f'j = {j}/{np.size(gridSizes)}')
         size = gridSizes[j]
         x = np.random.random_sample((size, size))
@@ -128,7 +127,7 @@ def task1p7():
         timeStart = timer()
         gauss_seidel_iterator(x, CuPyfn, nIterations)
         timesCuPy[j] = timer() - timeStart
-        
+         
     plt.xlabel('Grid Size')
     plt.ylabel('Computation Time [s]')
     plt.yscale('log')
