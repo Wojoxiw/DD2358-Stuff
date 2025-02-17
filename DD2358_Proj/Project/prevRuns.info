@@ -2,3 +2,4 @@
 # Computation times cannot be trusted (depends on # of cores, if run is reference or not, etc.) Hopefully, memory requirements are more consistent. Keep empty line at bottom.
 5.56389e+03 1.11830e+02 2.02227e+05 1.00000e+00 0.00000e+00
 5.27730e+03 1.52544e+02 2.02227e+05 1.00000e+00 0.00000e+00
+5.64450e+03 1.18665e+02 2.02227e+05 1.00000e+00 0.00000e+00
