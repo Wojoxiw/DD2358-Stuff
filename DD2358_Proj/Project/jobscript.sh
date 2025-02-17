@@ -1,14 +1,14 @@
 #!/bin/bash
 # ###SBATCH --qos=test  ## to run a quick, high-priority test (should be very quick)
-#SBATCH -t 02:45:00 ## job is killed after this time - overestimate
+#SBATCH -t 03:45:00 ## job is killed after this time - overestimate
 #SBATCH -A lu2024-2-93 ##from projinfo command
 
 #SBATCH -N 1 ##number of nodes that will be allocated - must use --ntasks-per-node or --cpus-per-task to use more than 1 core per node
-#SBATCH --tasks-per-node=8 ##number of cores used per task? - up to 48 per node for COSMOS. Presumably this is what I want, using MPI
+#SBATCH --tasks-per-node=4 ##number of cores used per task? - up to 48 per node for COSMOS. Presumably this is what I want, using MPI
 
 #SBATCH -o %j_result.out ## result filename, %j becomes the job number
 #SBATCH -e %j_result.err ## errors filename - should be empty unless an error occurs
-#SBATCH -J testing_hs ##puts a job name, to identify it
+#SBATCH -J overmem_test ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 

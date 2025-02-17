@@ -5,33 +5,34 @@ Created on 17 feb. 2025
 '''
 import numpy as np
 from timeit import default_timer as timer
-from functools import wraps
-import cProfile, pstats
 from matplotlib import pyplot as plt
-import h5py
 import wildfire_serial
-      
+import itertools
+import multiprocessing
     
 def task1p1():
     print('Task 1.1: Parallelization with multiprocessing')
-    nIterations = 1000
-    gridSizes = np.arange(10, 300, 10)
-    times = np.zeros(np.shape(gridSizes))
-    for j in range(len(gridSizes)):
-        if(j%5 == 1):
-            print(f'j = {j}/{np.size(gridSizes)}')
-        size = gridSizes[j]
-        timeStart = timer()
-        x = np.random.random_sample((size, size))
-        gauss_seidel_iterator(x, gauss_seidel_numpy, nIterations)
-        times[j] = timer() - timeStart
+    numProcesses = 42
+    with multiprocessing.Pool(processes = numProcesses) as pool:
+        treesOnFire = pool.map(wildfire_serial.simulate_wildfire, list(range(numProcesses))) ## needs dummy input, it seems
     
-    plt.xlabel('Grid Size')
-    plt.ylabel('Computation Time [s]')
-    plt.yscale('log')
-    plt.plot(gridSizes, times)
-    for i in range(len(sizes)):
-        plt.plot(numTrees, times, linewidth = 0.1, label = 'Multiprocess #'+str(i))
+    plt.xlabel('Days')
+    plt.ylabel('# of Trees Burning')
+    plt.title('Wildfire Spread Over Time')
+    
+    treesOnFireArray = np.array(list(itertools.zip_longest(*treesOnFire, fillvalue=0))).T
+    
+    avgTreesOnFire = np.mean(treesOnFireArray, axis=0)
+    plt.plot(range(np.shape(treesOnFireArray)[1]), avgTreesOnFire, label = 'Average')
+    
+    for i in range(len(treesOnFire)):
+        days = range(len(treesOnFire[i]))
+        if(i == 0):
+            plt.plot(days, treesOnFire[i], linewidth = 0.15, label = 'Multiprocess #'+str(i+1))
+        else:
+            plt.plot(days, treesOnFire[i], linewidth = 0.15)
+        
+    plt.legend()
     plt.grid()
     plt.tight_layout()
     plt.show()

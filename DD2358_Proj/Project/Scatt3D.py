@@ -146,13 +146,13 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     fvec = np.linspace(f1, f2, Nf)  # Vector of simulation frequencies
     lambda0 = c0/f0                 # Design wavelength
     k0 = 2*np.pi/lambda0            # Design wavenumber
-    h = lambda0/20                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
+    h = lambda0/12                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
-    R_dom = .7*lambda0                 # Radius of domain
+    R_dom = 2.5*lambda0                 # Radius of domain
     d_pml = lambda0                    # Thickness of PML
     R_pml = R_dom + d_pml              # Outer radius of PML
-    height_dom = .6*lambda0           # Height of domain - goes from -height/2 to height/2
+    height_dom = 1.7*lambda0           # Height of domain - goes from -height/2 to height/2
     height_pml = height_dom + 2*d_pml  # Height of PML - goes from -height/2 to height/2
     d_spheroid = 0.2*lambda0           # max. extra thickness/height of the oblate spheroid added to the domain and pml to obtain a domed ceiling
     
@@ -184,7 +184,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     gmsh.initialize()
     if comm.rank == model_rank:
         if(verbose):
-            size = pi*R_pml**2*height_pml/h**3*4 ### a rough estimation. *4 is closer for some reason?
+            size = pi*R_pml**2*height_pml/h**3 *4 ### a rough estimation. added factor at the end for a better estimation
             estmem, esttime = memTimeEstimation(size, Nf)
             print('Variables created, generating mesh...')
             print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
@@ -591,5 +591,5 @@ if __name__ == '__main__':
     mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
     
     print('Max. memory:',mem_usage/1000,'GiB')
-    memTimeAppend(Nepsr, Nf, mem_usage, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
+    memTimeAppend(Nepsr, Nf, mem_usage/1000, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
     

@@ -35,7 +35,7 @@ def get_neighbors(x, y):
             neighbors.append((nx, ny))
     return neighbors
 
-def simulate_wildfire():
+def simulate_wildfire(dummyInput, plotting = False):
     """Simulates wildfire spread over time."""
     forest, burn_time = initialize_forest()
     
@@ -65,13 +65,14 @@ def simulate_wildfire():
         if np.sum(forest == BURNING) == 0:  # Stop if no more fire
             break
         
-        # Plot grid every 5 days
-        if day % 5 == 0 or day == DAYS - 1:
-            plt.figure(figsize=(6, 6))
-            plt.imshow(forest, cmap='viridis', origin='upper')
-            plt.title(f"Wildfire Spread - Day {day}")
-            plt.colorbar(label="State: 0=Empty, 1=Tree, 2=Burning, 3=Ash")
-            plt.show()
+        if plotting:
+            # Plot grid every 5 days
+            if day % 5 == 0 or day == DAYS - 1:
+                plt.figure(figsize=(6, 6))
+                plt.imshow(forest, cmap='viridis', origin='upper')
+                plt.title(f"Wildfire Spread - Day {day}")
+                plt.colorbar(label="State: 0=Empty, 1=Tree, 2=Burning, 3=Ash")
+                plt.show()
     
     return fire_spread
 
