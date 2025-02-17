@@ -146,7 +146,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     fvec = np.linspace(f1, f2, Nf)  # Vector of simulation frequencies
     lambda0 = c0/f0                 # Design wavelength
     k0 = 2*np.pi/lambda0            # Design wavenumber
-    h = lambda0/20                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
+    h = lambda0/16                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
     R_dom = .7*lambda0                 # Radius of domain
@@ -339,6 +339,16 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     mur.x.array[defect_dofs] = mur_defect
     epsr_array_dut = epsr.x.array.copy()
     
+    global Nepsr ## global so I can use it for mem estimation later
+    Nepsr = len(epsr.x.array[:]) 
+    if comm.rank == model_rank:
+        if(verbose):
+            print('Pre-calculation estimates:')
+            size = Nepsr
+            estmem, esttime = memTimeEstimation(size, Nf)
+            print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
+            print(f'Estimated computation time for size {size:.3e}, Nf = {Nf}: {esttime/3600:.3f} hours')
+    
     # Set up PML layer
     def pml_stretch(y, x, k0, x_dom=0, x_pml=1, n=3, R0=1e-10):
         '''
@@ -491,8 +501,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     
     print(f'Rank {comm.rank}: Computing optimization vectors')
     sys.stdout.flush()
-    global Nepsr ## global so I can use it for mem estimation later
-    Nepsr = len(epsr.x.array[:]) 
+    
     if(not reference):
         b = np.zeros(Nf*N_antennas*N_antennas, dtype=complex)
     # Create function space for temporary interpolation
