@@ -12,7 +12,7 @@
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 
-echo "\n hello from $HOSTNAME:" $HOSTNAME ## some unix script
+echo "  hello from $HOSTNAME:" $HOSTNAME ## some unix script
 echo "jobscript listed above, date listed below..."
 date ## prints current date/time
 
@@ -42,9 +42,4 @@ cp -p prevRuns.info $SLURM_SUBMIT_DIR ## should now be updated with whatever the
 ## COSMOS node local disk has ~1.6 TB SSD, default 5300MB RAM per core. can do #SBATCH --mem-per-cpu=10600
 ## variable SNIC_TMP addresses the node-local disk
 
-## to run one, sbatch run_scipt.sh
-## first use module load Anaconda3
-##           source config_conda.sh
-## then
-##           conda install ***
-## to install the packages (maybe this is only needed once)
+## to run one, sbatch jobscript.sh

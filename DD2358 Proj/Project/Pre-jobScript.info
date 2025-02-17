@@ -26,7 +26,6 @@ Then use Anaconda to use the installed the ones that aren't:
 
 module load Anaconda3
 source config_conda.sh
-
 #conda create -n fenicsx-env
 conda activate fenicsx-env ## hopefully this is the only command needed once stuff is installed
 #conda install -c conda-forge fenics-dolfinx mpich pyvista # Linux and macOS
@@ -36,3 +35,6 @@ Then sync output folder with my local output folder, so I have the files locally
 
 rsync -a alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/PreTestingStuff/FileTransferTest/ "/mnt/d/Microwave Imaging/LUNARC_file_transferring_folder"
 rsync -a alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/PreTestingStuff/FileTransferTest/prevRuns.info "/mnt/d/Microwave Imaging/repository/DD2358 Proj/Project/prevRuns.info"
+
+To run the jobscript:
+sbatch jobscript.sh
