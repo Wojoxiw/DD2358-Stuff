@@ -29,6 +29,7 @@ import psutil
 import scipy
 from memory_profiler import memory_usage
 
+
 def memTimeEstimation(numCells = 0, Nf = 0, printPlots = False):
     '''
     Estimates the execution time and memory requirements of the Scatt3d run, based on previous runs.
@@ -140,6 +141,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     f0 = 10e9                       # Design frequency
     f1 = 8e9                        # Start frequency
     f2 = 12e9                       # Stop frequency
+    global Nf
     Nf = 1                          # Number of frequency points
     fvec = np.linspace(f1, f2, Nf)  # Vector of simulation frequencies
     lambda0 = c0/f0                 # Design wavelength
@@ -489,7 +491,8 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     
     print(f'Rank {comm.rank}: Computing optimization vectors')
     sys.stdout.flush()
-    Nepsr = len(epsr.x.array[:])
+    global Nepsr ## global so I can use it for mem estimation later
+    Nepsr = len(epsr.x.array[:]) 
     if(not reference):
         b = np.zeros(Nf*N_antennas*N_antennas, dtype=complex)
     # Create function space for temporary interpolation
@@ -557,6 +560,8 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     compt = timer() - tcomp1
     print('Computations completed in',compt,'s,',compt/3600,'hours.')# Max. memory usage:',mem_usage,'MiB')
     
+    global totT
+    totT = compt+mesht
     
     if comm.rank == model_rank: # Save global values for further postprocessing
         if(reference): ## less stuff to save
@@ -565,7 +570,6 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
             np.savez(folder+runName+'output.npz', b=b, fvec=fvec, S_ref=S_ref, S_dut=S_dut, epsr_mat=epsr_mat, epsr_defect=epsr_defect)
     
     ### save mem/time requirements for later use
-    memTimeAppend(Nepsr, Nf, 0, compt+mesht, reference, folder) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
     
     ### could possibly try adapting the 2D video-plotting here
 
@@ -578,3 +582,5 @@ if __name__ == '__main__':
     mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
     
     print('Max. memory:',mem_usage/1000,'GiB')
+    memTimeAppend(Nepsr, Nf, 0, totT) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
+    
