@@ -1,2 +1,4 @@
-/Project/data3D
+*.h5
+*.npz
+*.xdmf
 *.msh
