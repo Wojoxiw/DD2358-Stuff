@@ -146,7 +146,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     fvec = np.linspace(f1, f2, Nf)  # Vector of simulation frequencies
     lambda0 = c0/f0                 # Design wavelength
     k0 = 2*np.pi/lambda0            # Design wavenumber
-    h = lambda0/16                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
+    h = lambda0/20                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
     R_dom = .7*lambda0                 # Radius of domain
@@ -184,7 +184,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     gmsh.initialize()
     if comm.rank == model_rank:
         if(verbose):
-            size = pi*R_pml**2*height_pml/h**3 ### a rough under-estimation
+            size = pi*R_pml**2*height_pml/h**3*4 ### a rough estimation. *4 is closer for some reason?
             estmem, esttime = memTimeEstimation(size, Nf)
             print('Variables created, generating mesh...')
             print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
