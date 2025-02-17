@@ -146,7 +146,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     fvec = np.linspace(f1, f2, Nf)  # Vector of simulation frequencies
     lambda0 = c0/f0                 # Design wavelength
     k0 = 2*np.pi/lambda0            # Design wavenumber
-    h = lambda0/12                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
+    h = lambda0/15                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
     R_dom = 2.5*lambda0                 # Radius of domain

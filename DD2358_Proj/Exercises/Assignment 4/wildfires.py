@@ -35,7 +35,7 @@ def get_neighbors(x, y):
             neighbors.append((nx, ny))
     return neighbors
 
-def simulate_wildfire(dummyInput, plotting = False):
+def simulate_wildfire_serial(dummyInput, plotting = False):
     """Simulates wildfire spread over time."""
     forest, burn_time = initialize_forest()
     
