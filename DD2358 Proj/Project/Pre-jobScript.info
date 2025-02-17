@@ -1,0 +1,35 @@
+This file describes what I need to run before/after using the jobscript.sh
+#commented lines should only need to be run once
+
+First download my python scripts from github with: 
+
+git clone -n --depth=1 --filter=tree:0 https://github.com/Wojoxiw/DD2358-Stuff
+cd "DD2358-Stuff"
+git sparse-checkout set --no-cone "/DD2358 Proj/Project"				
+git checkout		
+
+Then load the modules that are available:
+
+#module load GCC/13.3.0
+#module load OpenMPI/5.0.3
+#module load mpi4py/4.0.1
+#module load SciPy-bundle/2024.05
+#module load GCC/10.3.0 ##need this older version for MPICH... I guess I can just load this after the rest?? seems to unload the above lines.
+#module load MPICH/3.4.2
+#module save
+module restore  ## just need to restore the above, hopefully
+
+Then use Anaconda to use the installed the ones that aren't:
+
+module load Anaconda3
+source config_conda.sh
+
+#conda create -n fenicsx-env
+conda activate fenicsx-env ## hopefully this is the only command needed once stuff is installed
+#conda install -c conda-forge fenics-dolfinx mpich pyvista # Linux and macOS
+#conda install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py petsc=*=complex* memory_profiler
+
+Then sync output folder with my local output folder, so I have the files locally... by running the following script locally, afterward
+
+rsync -a alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/PreTestingStuff/FileTransferTest/ "/mnt/d/Microwave Imaging/LUNARC_file_transferring_folder"
+rsync -a alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/PreTestingStuff/FileTransferTest/prevRuns.info "/mnt/d/Microwave Imaging/repository/DD2358 Proj/Project/prevRuns.info"
