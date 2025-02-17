@@ -8,7 +8,8 @@ First download my python scripts from github with:
 #cd "DD2358-Stuff"
 #git sparse-checkout set --no-cone "/DD2358_Proj/Project"				
 #git checkout
-git fetch --all ## to update the scripts (overwriting local changes)
+## to update the scripts (overwriting local changes)
+git fetch --all 
 git reset --hard origin/master
 
 
