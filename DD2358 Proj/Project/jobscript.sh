@@ -23,12 +23,9 @@ date ## prints current date/time
 cp -p Scatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory. I first update it with git pull origin master
 cp -p prevRuns.info $SNIC_TMP
 cd $SNIC_TMP ## go to that directory
-module load GCC/13.3.0
-module load OpenMPI/5.0.3
-module load mpi4py/4.0.1
-module load SciPy-bundle/2024.05
-install fenics-dolfinx mpich petsc=*=complex*
+
 time python Scatt3D.py ### then run it... and time it
+
 cp -p result.dat $SLURM_SUBMIT_DIR ## copies this file out to the submission directory-whatever directory you were in when using sbatch jobscript.sh
 cp -p prevRuns.info $SLURM_SUBMIT_DIR ## should now be updated with whatever the runtime was
 ## then sync output folder with my local output folder, so I have the files locally... by running the following script locally, afterward
