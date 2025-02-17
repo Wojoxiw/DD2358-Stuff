@@ -184,7 +184,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     gmsh.initialize()
     if comm.rank == model_rank:
         if(verbose):
-            size = pi*R_pml**2*height_pml/h**3 *4 ### a rough estimation. added factor at the end for a better estimation
+            size = pi*R_pml**2*height_pml/h**3 *4 ### a rough estimation. added factor at the end to get closer
             estmem, esttime = memTimeEstimation(size, Nf)
             print('Variables created, generating mesh...')
             print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')

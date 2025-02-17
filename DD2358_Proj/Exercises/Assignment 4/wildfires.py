@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import random
+import pyvtk
 
 # Constants
 GRID_SIZE = 800  # 800x800 forest grid

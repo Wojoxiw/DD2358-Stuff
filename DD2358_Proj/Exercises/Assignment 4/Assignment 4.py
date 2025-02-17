@@ -6,7 +6,7 @@ Created on 17 feb. 2025
 import numpy as np
 from timeit import default_timer as timer
 from matplotlib import pyplot as plt
-import wildfire_serial
+import wildfires
 import itertools
 import multiprocessing
     
@@ -14,7 +14,7 @@ def task1p1():
     print('Task 1.1: Parallelization with multiprocessing')
     numProcesses = 42
     with multiprocessing.Pool(processes = numProcesses) as pool:
-        treesOnFire = pool.map(wildfire_serial.simulate_wildfire_serial, list(range(numProcesses))) ## needs dummy input, it seems
+        treesOnFire = pool.map(wildfires.simulate_wildfire_serial, list(range(numProcesses))) ## needs dummy input, it seems
     
     plt.xlabel('Days')
     plt.ylabel('# of Trees Burning')
