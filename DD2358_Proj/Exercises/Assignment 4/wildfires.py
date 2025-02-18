@@ -2,6 +2,9 @@ import numpy as np
 import matplotlib.pyplot as plt
 import random
 import pyvtk
+import dask
+from dask import delayed
+import dask.array as da
 
 # Constants
 GRID_SIZE = 800  # 800x800 forest grid
@@ -36,7 +39,7 @@ def get_neighbors(x, y):
             neighbors.append((nx, ny))
     return neighbors
 
-def simulate_wildfire_serial(dummyInput, plotting = False):
+def simulate_wildfire_serial(dummyInput = 0, plotting = False):
     """Simulates wildfire spread over time."""
     forest, burn_time = initialize_forest()
     
@@ -77,16 +80,61 @@ def simulate_wildfire_serial(dummyInput, plotting = False):
     
     return fire_spread
 
-if __name__ == '__main__':
+#@delayed
+def simulate_wildfire_dask(chunkSize = GRID_SIZE, i = 0, VTKing = False):
+    """Simulates wildfire spread over time."""
     
-    # Run simulation
-    fire_spread_over_time = simulate_wildfire()
+    forest = np.ones((GRID_SIZE, GRID_SIZE), dtype=int)#, chunks = (chunkSize, chunkSize))  # All trees
+    burn_time = np.ones((GRID_SIZE, GRID_SIZE), dtype=int)#, chunks = (chunkSize, chunkSize))  # Tracks how long a tree burns
     
-    # Plot results
-    plt.figure(figsize=(8, 5))
-    plt.plot(range(len(fire_spread_over_time)), fire_spread_over_time, label="Burning Trees")
-    plt.xlabel("Days")
-    plt.ylabel("Number of Burning Trees")
-    plt.title("Wildfire Spread Over Time")
-    plt.legend()
-    plt.show()
+    # Ignite a random tree
+    x, y = random.randint(0, GRID_SIZE-1), random.randint(0, GRID_SIZE-1)
+    forest[x, y] = BURNING
+    burn_time = np.abs(burn_time - forest)  # Fire starts burning... hopefully this is faster?
+        
+
+    fire_spread = np.zeros(DAYS, dtype=int)  # Track number of burning trees each day
+    
+    if(VTKing):
+        filename = f'forest{0:03d}.vtk'
+        vtk_data = pyvtk.VtkData(
+            pyvtk.StructuredPoints([GRID_SIZE, GRID_SIZE, 1]),  # 2D structured grid
+            pyvtk.PointData(pyvtk.Scalars(forest.flatten(), name="forest"),)  # The current condition of the forest
+        )
+        vtk_data.tofile(filename)
+    
+    for day in range(DAYS):
+        new_forest = forest.copy()
+        
+        for x in range(GRID_SIZE):
+            for y in range(GRID_SIZE):
+                if forest[x, y] == BURNING:
+                    burn_time[x, y] += 1  # Increase burn time
+                    
+                    # If burn time exceeds threshold, turn to ash
+                    if burn_time[x, y] >= BURN_TIME:
+                        new_forest[x, y] = ASH
+                    
+                    # Spread fire to neighbors
+                    for nx, ny in get_neighbors(x, y):
+                        if forest[nx, ny] == TREE and random.random() < FIRE_SPREAD_PROB:
+                            new_forest[nx, ny] = BURNING
+                            burn_time[nx, ny] = 1
+        
+        forest = new_forest.copy()
+        fire_spread[day] = np.sum(forest == BURNING)
+        
+        if(VTKing):
+            filename = f'forest{(day+1):03d}.vtk'
+            vtk_data = pyvtk.VtkData(
+                pyvtk.StructuredPoints([GRID_SIZE, GRID_SIZE, 1]),  # 2D structured grid
+                pyvtk.PointData(pyvtk.Scalars(forest.flatten(), name="forest"),)  # The current condition of the forest
+            )
+            vtk_data.tofile(filename)
+        
+        if np.sum(forest == BURNING) == 0:  # Stop if no more fire
+            break
+        
+
+    
+    return da.from_array(fire_spread, chunks = (chunkSize))

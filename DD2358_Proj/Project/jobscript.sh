@@ -8,7 +8,7 @@
 
 #SBATCH -o %j_result.out ## result filename, %j becomes the job number
 #SBATCH -e %j_result.err ## errors filename - should be empty unless an error occurs
-#SBATCH -J overmem_test_morecores ##puts a job name, to identify it
+#SBATCH -J oom_test_morecpn ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 
