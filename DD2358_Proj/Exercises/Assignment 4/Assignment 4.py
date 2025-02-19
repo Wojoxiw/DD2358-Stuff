@@ -175,5 +175,5 @@ def task1p4():
 if __name__ == '__main__':
     #task1p1()
     #task1p2()
-    task1p3()
+    #task1p3()
     #task1p4()
