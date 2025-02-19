@@ -586,7 +586,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
 if __name__ == '__main__':
     runName = 'test' ## one antenna, no object. testing domed domain and pml
     folder = 'data3D/'
-     
+     exit()
     #memTimeEstimation(printPlots = True)
     mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
     
