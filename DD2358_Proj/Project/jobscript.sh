@@ -22,5 +22,5 @@ cd $SNIC_TMP ## go to that directory
 
 time python Scatt3D.py ### then run it... and time it
 
-cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to the submission directory-whatever directory you were in when using sbatch jobscript.sh
+cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to whatever directory you were in when using sbatch jobscript.sh
 cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also

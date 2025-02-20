@@ -146,15 +146,15 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     fvec = np.linspace(f1, f2, Nf)  # Vector of simulation frequencies
     lambda0 = c0/f0                 # Design wavelength
     k0 = 2*np.pi/lambda0            # Design wavenumber
-    h = lambda0/15                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
+    h = lambda0/22                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
-    R_dom = 2.5*lambda0                 # Radius of domain
+    R_dom = 1.0*lambda0                 # Radius of domain
     d_pml = lambda0                    # Thickness of PML
     R_pml = R_dom + d_pml              # Outer radius of PML
-    height_dom = 1.7*lambda0           # Height of domain - goes from -height/2 to height/2
+    height_dom = 0.8*lambda0           # Height of domain - goes from -height/2 to height/2
     height_pml = height_dom + 2*d_pml  # Height of PML - goes from -height/2 to height/2
-    d_spheroid = 0.2*lambda0           # max. extra thickness/height of the oblate spheroid added to the domain and pml to obtain a domed ceiling
+    d_spheroid = 0.3*lambda0           # max. extra thickness/height of the oblate spheroid added to the domain and pml to obtain a domed ceiling
     
     # Antennas - using a box where 1 surface is the antenna
     polarization = 'vert'           # Choose between 'vert' and 'horiz'
@@ -584,9 +584,9 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
 
 ##MAIN STUFF
 if __name__ == '__main__':
-    runName = 'test' ## one antenna, no object. testing domed domain and pml
+    runName = 'smallTest' ## one antenna, no object. testing domed domain and pml
     folder = 'data3D/'
-    exit()
+    
     #memTimeEstimation(printPlots = True)
     mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
     

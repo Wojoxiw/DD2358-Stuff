@@ -12,31 +12,19 @@ First download my python scripts from github with:
 git fetch --all 
 git reset --hard origin/master
 
-Then load the modules that are available:
+Then install the needed packages in an env:
+Can install mamba from https://github.com/conda-forge/miniforge#mambaforge, otherwise just use conda
 
-#module load GCC/13.3.0
-#module load OpenMPI/5.0.3
-#module load mpi4py/4.0.1
-#module load SciPy-bundle/2024.05
-#module load GCC/10.3.0 ##need this older version for MPICH... I guess I can just load this after the rest?? seems to unload the above lines.
-#module load MPICH/3.4.2
-#module save
-module restore  ## just need to restore the above, hopefully
-
-Then use Anaconda to use the installed the ones that aren't:
-
-module load Anaconda3
-source config_conda.sh
-#conda create -n fenicsx-env
-conda activate fenicsx-env ## hopefully this is the only command needed once stuff is installed
-#conda install -c conda-forge fenics-dolfinx mpich pyvista # Linux and macOS
-#conda install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py petsc=*=complex* memory_profiler
+mamba create --name Scatt3D
+mamba activate Scatt3D
+mamba install fenics-dolfinx mpich petsc=*=complex*
+mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler
+pip install imageio[ffmpeg]
 
 Then sync output folder with my local output folder, so I have the files locally... by running the following script locally, afterward
 
 rsync -ar --info=progress2 alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/scatt3DTesting/DD2358-Stuff/DD2358_Proj/Project/data3D/ "/mnt/d/Microwave Imaging/repository/DD2358_Proj/Project/data3DLUNARC"
 rsync -ar --info=progress2 alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/scatt3DTesting/DD2358-Stuff/DD2358_Proj/Project/prevRuns.info "/mnt/d/Microwave Imaging/repository/DD2358_Proj/Project/prevRuns.info"
-
 
 To run the jobscript:
 sbatch jobscript.sh
