@@ -1,3 +1,4 @@
+# encoding: utf-8
 ### Modification of scatt2d to handle 3d geometry
 # Stripped down for simplicity for DD2358 course
 # Simple scattering case of 2 antennas at a 90 degree angle, with a sphere in the center
@@ -126,10 +127,6 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     
     startTime = timer()
     
-    # MPI settings
-    comm = MPI.COMM_WORLD
-    model_rank = 0
-    
     # Physical constants and geometry dimension
     mu0 = 4*np.pi*1e-7
     eps0 = 1/c0**2/mu0
@@ -146,15 +143,21 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     fvec = np.linspace(f1, f2, Nf)  # Vector of simulation frequencies
     lambda0 = c0/f0                 # Design wavelength
     k0 = 2*np.pi/lambda0            # Design wavenumber
-    h = lambda0/22                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
+    h = lambda0/12                  # Mesh size  (normally lambda0/20 with degree 1 fem is what we have used)
     fem_degree = 1                  # Degree of finite elements
     
-    R_dom = 1.0*lambda0                 # Radius of domain
+    R_dom = .8*lambda0                 # Radius of domain
     d_pml = lambda0                    # Thickness of PML
     R_pml = R_dom + d_pml              # Outer radius of PML
-    height_dom = 0.8*lambda0           # Height of domain - goes from -height/2 to height/2
+    height_dom = 0.5*lambda0           # Height of domain - goes from -height/2 to height/2
     height_pml = height_dom + 2*d_pml  # Height of PML - goes from -height/2 to height/2
-    d_spheroid = 0.3*lambda0           # max. extra thickness/height of the oblate spheroid added to the domain and pml to obtain a domed ceiling
+    
+    d_spheroid = 0.1*lambda0           # max. extra thickness/height of the oblate spheroid added to the domain and pml to obtain a domed ceiling
+    if(d_spheroid>0): ## add a spheroid domed top and bottom with some specified extra height, that passes through the cylindrical 'corner' (to try to avoid waves being parallel to the PML)
+        R_extra_spheroid_dom = R_dom*(-1 + np.sqrt(1-( 1 - 1/(1- (height_dom/2/(height_dom/2+d_spheroid))**2 ) )) )       # how far beyond the domain the spheroid goes, radially. this will not actually be part of the domain. find using optimization
+        a_dom = (height_dom/2+d_spheroid)/(R_dom+R_extra_spheroid_dom)
+        R_extra_spheroid_pml = R_pml*(-1 + np.sqrt(1-( 1 - 1/(1- (height_pml/2/(height_pml/2+d_spheroid))**2 ) )))
+        a_pml = (height_pml/2+d_spheroid)/(R_pml+R_extra_spheroid_pml)
     
     # Antennas - using a box where 1 surface is the antenna
     polarization = 'vert'           # Choose between 'vert' and 'horiz'
@@ -230,17 +233,12 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
         pml_cyl = gmsh.model.occ.addCylinder(0, 0, -height_pml/2, 0, 0, height_pml, R_pml)
         pml = [(tdim, pml_cyl)] # dim, tags
         if(d_spheroid>0): ## add a spheroid domed top and bottom with some specified extra height, that passes through the cylindrical 'corner' (to try to avoid waves being parallel to the PML)
-
-            R_extra_spheroid_dom = R_dom*(-1 + np.sqrt(1-( 1 - 1/(1- (height_dom/2/(height_dom/2+d_spheroid))**2 ) )) )       # how far beyond the domain the spheroid goes, radially. this will not actually be part of the domain. find using optimization
-            a_dom = (height_dom/2+d_spheroid)/(R_dom+R_extra_spheroid_dom)
             domain_spheroid = gmsh.model.occ.addSphere(0, 0, 0, R_dom+R_extra_spheroid_dom)
             gmsh.model.occ.dilate([(tdim, domain_spheroid)], 0, 0, 0, 1, 1, a_dom)
             domain_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -height_dom/2-d_spheroid, 0, 0, height_dom+d_spheroid*2, R_dom)
             domed_ceilings = gmsh.model.occ.intersect([(tdim, domain_spheroid)], [(tdim, domain_extraheight_cyl)])
             domain = gmsh.model.occ.fuse([(tdim, domain_cyl)], domed_ceilings[0])[0] ## [0] to get  dimTags
             
-            R_extra_spheroid_pml = R_pml*(-1 + np.sqrt(1-( 1 - 1/(1- (height_pml/2/(height_pml/2+d_spheroid))**2 ) )))
-            a_pml = (height_pml/2+d_spheroid)/(R_pml+R_extra_spheroid_pml)
             pml_spheroid = gmsh.model.occ.addSphere(0, 0, 0, R_pml+R_extra_spheroid_pml)
             gmsh.model.occ.dilate([(tdim, pml_spheroid)], 0, 0, 0, 1, 1, a_pml)
             pml_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -height_pml/2-d_spheroid, 0, 0, height_pml+d_spheroid*2, R_pml)
@@ -279,7 +277,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
         gmsh.model.occ.synchronize()
         gmsh.model.mesh.generate(tdim)
         gmsh.write('tmp.msh')
-        if(verbose):
+        if(verbose and comm.rank == model_rank):
             mesht = timer() - startTime
             print('Mesh created in '+str(mesht)+' s')
         if viewGMSH: ## show the mesh, then stop
@@ -302,8 +300,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     pec_surface_marker = comm.bcast(pec_surface_marker, root=model_rank)
     antenna_surface_markers = comm.bcast(antenna_surface_markers, root=model_rank)
     
-    mesh, subdomains, boundaries = dolfinx.io.gmshio.model_to_mesh(
-        gmsh.model, comm=comm, rank=model_rank, gdim=tdim)
+    mesh, subdomains, boundaries = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm=comm, rank=model_rank, gdim=tdim)
     gmsh.finalize()
     
     mesh.topology.create_connectivity(tdim, tdim)
@@ -339,12 +336,12 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     mur.x.array[defect_dofs] = mur_defect
     epsr_array_dut = epsr.x.array.copy()
     
-    global Nepsr ## global so I can use it for mem estimation later
-    Nepsr = len(epsr.x.array[:]) 
+    Nepsr = len(epsr.x.array[:])
+    sizes = comm.gather(Nepsr, root=model_rank)
     if comm.rank == model_rank:
+        size = sum(sizes)
         if(verbose):
             print('Pre-calculation estimates:')
-            size = Nepsr
             estmem, esttime = memTimeEstimation(size, Nf)
             print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
             print(f'Estimated computation time for size {size:.3e}, Nf = {Nf}: {esttime/3600:.3f} hours')
@@ -566,13 +563,13 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
         xdmf.close()
     ###
     
-    compt = timer() - tcomp1
-    print('Computations completed in',compt,'s,',compt/3600,'hours.')# Max. memory usage:',mem_usage,'MiB')
-    
-    global totT
-    totT = compt+mesht
     
     if comm.rank == model_rank: # Save global values for further postprocessing
+        compt = timer() - tcomp1
+        print('Computations completed in',compt,'s,',compt/3600,'hours.')# Max. memory usage:',mem_usage,'MiB')
+        
+        global totT
+        totT = compt+mesht
         if(reference): ## less stuff to save
             np.savez(folder+runName+'output.npz', fvec=fvec, S_ref=S_ref, epsr_mat=epsr_mat, epsr_defect=epsr_defect)
         else:
@@ -584,12 +581,22 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
 
 ##MAIN STUFF
 if __name__ == '__main__':
+    # MPI settings
+    comm = MPI.COMM_WORLD
+    model_rank = 0
+    global size
+    
     runName = 'smallTest' ## one antenna, no object. testing domed domain and pml
     folder = 'data3D/'
+    print('Scatt3D start:')
+    
+    print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}")
+    print(f"{MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
     
     #memTimeEstimation(printPlots = True)
     mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
-    
-    print('Max. memory:',mem_usage/1000,'GiB')
-    memTimeAppend(Nepsr, Nf, mem_usage/1000, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
-    
+        
+    if(comm.rank == model_rank):
+        print('Max. memory:',mem_usage/1000,'GiB')
+        memTimeAppend(size, Nf, mem_usage/1000, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
+        

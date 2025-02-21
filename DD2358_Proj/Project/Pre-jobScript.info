@@ -1,5 +1,5 @@
 This file describes what I need to run before/after using the jobscript.sh
-Can use 'projinfo' to see project, user, and time allocation.
+Can use 'projinfo' to see project, user, and time allocation (must first deactivate mamba/conda).
 #commented lines should only need to be run once, to set up/install packages on the submission node. Maybe need to run it every time I log in?
 
 First download my python scripts from github with: 
