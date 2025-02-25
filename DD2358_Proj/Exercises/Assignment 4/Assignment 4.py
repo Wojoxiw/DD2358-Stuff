@@ -17,7 +17,7 @@ import dask.array as da
 from wildfires import GRID_SIZE, DAYS
 
 def wildfires_parallel(numRuns):
-    with multiprocessing.Pool(processes = 20) as pool: ## seems to give an error with more than 60 - perhaps just more than I have cores is good
+    with multiprocessing.Pool(processes = 20) as pool:
         treesOnFire = pool.map(wildfires.simulate_wildfire_serial, list(range(numRuns))) ## needs dummy input, it seems
     return treesOnFire
 
@@ -89,6 +89,7 @@ def task1p2():
     client = Client()
     print('Client dashboard running at:', client.dashboard_link)
     numRuns = 50
+    
     treesOnFireArray = wildfires_dask(numRuns, client)
     
     avgTreesOnFire = da.mean(treesOnFireArray, axis=0)
@@ -120,37 +121,37 @@ def task1p3():
     cluster.scale(numWorkers)
     print('Client dashboard running at:', client.dashboard_link)
     t1 = timer()
-    wildfires_dask(numRuns, client, chunkSize = DAYS)
+    wildfires_dask(numRuns, client, chunkSize = GRID_SIZE)
     tdask = timer()-t1
     print('Average simulation runtime for dask with one-chunk results ('+str(numRuns)+' runs):',tdask/numRuns,'s, numWorkers = ',str(numWorkers))
     numWorkers = 2
     cluster.scale(numWorkers)
     t1 = timer()
-    wildfires_dask(numRuns, client, chunkSize = DAYS)
+    wildfires_dask(numRuns, client, chunkSize = GRID_SIZE)
     tdask = timer()-t1
     print('Average simulation runtime for dask with one-chunk results ('+str(numRuns)+' runs):',tdask/numRuns,'s, numWorkers = ',str(numWorkers))
     numWorkers = 4
     cluster.scale(numWorkers)
     t1 = timer()
-    wildfires_dask(numRuns, client, chunkSize = DAYS)
+    wildfires_dask(numRuns, client, chunkSize = GRID_SIZE)
     tdask = timer()-t1
     print('Average simulation runtime for dask with one-chunk results ('+str(numRuns)+' runs):',tdask/numRuns,'s, numWorkers = ',str(numWorkers))
     numWorkers = 20
     cluster.scale(numWorkers)
     t1 = timer()
-    wildfires_dask(numRuns, client, chunkSize = DAYS)
+    wildfires_dask(numRuns, client, chunkSize = GRID_SIZE)
     tdask = timer()-t1
     print('Average simulation runtime for dask with one-chunk results ('+str(numRuns)+' runs):',tdask/numRuns,'s, numWorkers = ',str(numWorkers))
     t1 = timer()
-    wildfires_dask(numRuns, client, chunkSize = int(DAYS/2))
+    wildfires_dask(numRuns, client, chunkSize = int(GRID_SIZE/2))
     tdask = timer()-t1
     print('Average simulation runtime for dask with two-chunk results ('+str(numRuns)+' runs):',tdask/numRuns,'s, numWorkers = ',str(numWorkers))
     t1 = timer()
-    wildfires_dask(numRuns, client, chunkSize = int(DAYS/8))
+    wildfires_dask(numRuns, client, chunkSize = int(GRID_SIZE/8))
     tdask = timer()-t1
     print('Average simulation runtime for dask with eight-chunk results ('+str(numRuns)+' runs):',tdask/numRuns,'s, numWorkers = ',str(numWorkers))
     t1 = timer()
-    wildfires_dask(numRuns, client, chunkSize = int(DAYS/30))
+    wildfires_dask(numRuns, client, chunkSize = int(GRID_SIZE/30))
     tdask = timer()-t1
     print('Average simulation runtime for dask with 30-chunk results ('+str(numRuns)+' runs):',tdask/numRuns,'s, numWorkers = ',str(numWorkers))
     

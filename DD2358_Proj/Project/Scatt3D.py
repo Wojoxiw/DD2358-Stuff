@@ -11,7 +11,8 @@
 # use sphinx
 # use logging instead of printing, maybe?
 
-
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx, ufl, basix
@@ -186,6 +187,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     # Set up mesh using gmsh
     gmsh.initialize()
     if comm.rank == model_rank:
+        global size
         if(verbose):
             size = pi*R_pml**2*height_pml/h**3 *4 ### a rough estimation. added factor at the end to get closer
             estmem, esttime = memTimeEstimation(size, Nf)
@@ -581,22 +583,28 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
 
 ##MAIN STUFF
 if __name__ == '__main__':
+    args = sys.argv[1:] ## can take the number of MPI processes as an argument. If not given, just say 0. Current not used anywhere.
+    if(len(args) == 0):
+        MPInum = 1
+    else:
+        MPInum = args[0]
+    print('Expected number of MPI processes:', MPInum)
     # MPI settings
     comm = MPI.COMM_WORLD
     model_rank = 0
-    global size
     
     runName = 'smallTest' ## one antenna, no object. testing domed domain and pml
     folder = 'data3D/'
-    print('Scatt3D start:')
     
-    print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}")
-    print(f"{MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
+    if(comm.rank == model_rank):
+        print('Scatt3D start:')
     
     #memTimeEstimation(printPlots = True)
-    mem_usage = memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
-        
+    ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
+    ## with MPI, each process seems to take about the same amount of memory
+    mem_usage = MPInum * memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) 
+    
+    print('Max. memory:',mem_usage/1000,'GiB'+f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
     if(comm.rank == model_rank):
-        print('Max. memory:',mem_usage/1000,'GiB')
         memTimeAppend(size, Nf, mem_usage/1000, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
         

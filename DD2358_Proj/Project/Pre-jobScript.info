@@ -13,12 +13,14 @@ git fetch --all
 git reset --hard origin/master
 
 Then install the needed packages in an env:
+Loading the modules that are available always seems to give an error such as ModuleNotFoundError: No module named 'numpy', so just install all with mamba
 Can install mamba from https://github.com/conda-forge/miniforge#mambaforge, otherwise just use conda
 
 mamba create --name Scatt3D
 mamba activate Scatt3D
+
 mamba install fenics-dolfinx mpich petsc=*=complex*
-mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler
+mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler numpy
 pip install imageio[ffmpeg]
 
 Then sync output folder with my local output folder, so I have the files locally... by running the following script locally, afterward

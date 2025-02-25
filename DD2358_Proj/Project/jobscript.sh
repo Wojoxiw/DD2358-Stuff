@@ -15,14 +15,15 @@ cat $0 ## unix command - outputs this script to the top of the job's output file
 echo \n"hello from $HOSTNAME:" $HOSTNAME ## some unix script
 echo "jobscript listed above, date listed below..."
 date ## prints current date/time
-							
+
+mamba activate Scatt3D ## the mamba env
 cp -p Scatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory. I first update it with git pull origin master
 cp -p prevRuns.info $SNIC_TMP
 cd $SNIC_TMP ## go to that directory
 
-time python Scatt3D.py ### then run it... and time it
-export OMP_NUM_THREADS = 1 ## perhaps needed for MPI speedup
-time mpirun -n 8 python Scatt3D.py
+#time python Scatt3D.py ### then run it... and time it
+export MPInum=4 ## number of MPI processes
+time mpirun -n $MPInum python Scatt3D.py $MPInum ## run the main process, and time it
 
 cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to whatever directory you were in when using sbatch jobscript.sh
 cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also
