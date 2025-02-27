@@ -61,7 +61,7 @@ def memTimeEstimation(numCells = 0, Nf = 0, printPlots = False):
         xs = np.linspace(np.min(ncells*Nfs), np.max(ncells*Nfs), 1000)
         plt.plot(ncells, times/3600, '-o', label='runs on computer')
         plt.title('Computation time by size')
-        plt.xlabel(r'# of mesh cells times # of frequencies')
+        plt.xlabel(r'(# of mesh cells)*(# of frequencies)')
         plt.ylabel('Time [hours]')
         plt.grid()
         plt.plot(xs, line(xs, fit[0], fit[1])/3600, label='curve_fit')
@@ -74,24 +74,24 @@ def memTimeEstimation(numCells = 0, Nf = 0, printPlots = False):
     ###############
     # MEMORY STUFF
     ###############
-    idxMemsRecorded = np.argwhere(data[:,0] > 0)[:, 0] ## only take data where the memory cost is actually recorded, for memory estimation
+    idxMemsRecorded = np.argwhere(data[:,0] > 0)[:, 0] ## only take data where the memory cost is actually recorded, for memory estimation (this should be always now)
     mems, ncells = data[idxMemsRecorded, 0], data[idxMemsRecorded, 2]
     idx = np.argsort(mems) ## sort by mem
     mems, ncells= mems[idx], ncells[idx]
     
     fitMem = scipy.optimize.curve_fit(line, ncells, mems)[0]
-    mem = line(numCells*Nf, fitMem[0], fitMem[1])
+    mem = line(numCells, fitMem[0], fitMem[1])
     
     if(printPlots):
         xs = np.linspace(np.min(ncells), np.max(ncells), 1000)
-        plt.plot(ncells, mems/1000, '-o', label='runs on computer')
+        plt.plot(ncells, mems, '-o', label='runs on computer')
         plt.title('Memory Requirements by size')
         plt.xlabel(r'# of mesh cells')
         plt.ylabel('Memory [GB] (Approximate)')
         plt.grid()
-        plt.plot(xs, line(xs, fitMem[0], fitMem[1])/3600, label='curve_fit')
+        plt.plot(xs, line(xs, fitMem[0], fitMem[1]), label='curve_fit')
         if(numCells>0 and Nf>0):
-            plt.scatter(numCells, mem/1000, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Memory')
+            plt.scatter(numCells, mem, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Memory')
         plt.legend()
         plt.tight_layout()
         plt.show()
@@ -198,7 +198,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
         gmsh.option.setNumber('General.Verbosity', 1)
         gmsh.option.setNumber("Mesh.CharacteristicLengthMin", h) ## minimum mesh size
         gmsh.option.setNumber("Mesh.CharacteristicLengthMax", h) ## max. mesh size
-    
+        
         # Create antennas
         antennas_DimTags = []
         x_antenna = np.zeros((N_antennas, 3))
@@ -345,6 +345,8 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
         if(verbose):
             print('Pre-calculation estimates:')
             estmem, esttime = memTimeEstimation(size, Nf)
+            print('global number of cells from dolfinx directly:', mesh.topology.index_map(2).size_global)
+            print('local num:', mesh.topology.index_map(2).size_local)
             print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
             print(f'Estimated computation time for size {size:.3e}, Nf = {Nf}: {esttime/3600:.3f} hours')
     
@@ -446,7 +448,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
         - ufl.inner(k00**2*epsr_pml*E, v)*dx_pml + eval(F_antennas_str)
     bcs = [bc_pec]
     lhs, rhs = ufl.lhs(F), ufl.rhs(F)
-    petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"}
+    petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## try looking this up to see if some other options might be better
     problem = dolfinx.fem.petsc.LinearProblem(
         lhs, rhs, bcs=bcs, petsc_options=petsc_options
     )
@@ -554,21 +556,22 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
                 xdmf.write_function(q, nf*N_antennas*N_antennas + m*N_antennas + n)
     xdmf.close()
     
-    ###if trying to plot phase, save the final freq. point as different timestamps:
-    if(True): ### make this True to make a phase-animation of the final fields (cannot figure out how to do this inside paraview)
-        xdmf = dolfinx.io.XDMFFile(comm=comm, filename=folder+runName+'outputPhaseAnimation.xdmf', file_mode='w')
-        xdmf.write_mesh(mesh)
-        Nframes = 50
-        for i in range(Nframes):
-            epsr.x.array[:] = q.x.array*np.exp(1j*i*2*pi/Nframes)
-            xdmf.write_function(epsr, i)
-        xdmf.close()
-    ###
-    
     
     if comm.rank == model_rank: # Save global values for further postprocessing
         compt = timer() - tcomp1
         print('Computations completed in',compt,'s,',compt/3600,'hours.')# Max. memory usage:',mem_usage,'MiB')
+        
+        
+        ###if trying to plot phase, save the final freq. point as different timestamps:
+        if(True): ### make this True to make a phase-animation of the final fields (cannot figure out how to do this inside paraview)
+            xdmf2 = dolfinx.io.XDMFFile(comm=comm, filename=folder+runName+'outputPhaseAnimation.xdmf', file_mode='w')
+            xdmf2.write_mesh(mesh)
+            Nframes = 50
+            for i in range(Nframes):
+                epsr.x.array[:] = q.x.array*np.exp(1j*i*2*pi/Nframes)
+                xdmf2.write_function(epsr, i)
+            xdmf2.close()
+        ###
         
         global totT
         totT = compt+mesht
@@ -598,7 +601,7 @@ if __name__ == '__main__':
     
     if(comm.rank == model_rank):
         print('Scatt3D start:')
-    
+    memTimeEstimation(printPlots = True)
     #memTimeEstimation(printPlots = True)
     ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
     ## with MPI, each process seems to take about the same amount of memory
