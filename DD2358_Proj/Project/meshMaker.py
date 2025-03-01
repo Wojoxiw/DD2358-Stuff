@@ -1,5 +1,7 @@
-# encoding: utf-8
-## this file makes the mesh
+# Create mesh for a rotationally symmetric radome. Also a similar
+# geometry with a sphere for verification.
+# 
+# Daniel Sjöberg, 2024-07-04
 
 import numpy as np
 import dolfinx
@@ -7,8 +9,9 @@ from mpi4py import MPI
 import gmsh
 import sys
 import pyvista
-from scipy.constants import c as c0
 
+# Set up design frequency and wavelength
+from scipy.constants import c as c0
 f0 = 10e9                            # Design frequency
 lambda0 = c0/f0                      # Design wavelength
 
@@ -28,7 +31,8 @@ class PerfectlyMatchedLayer():
         
 class MeshData():
     """Data structure for the mesh and metadata."""
-    def __init__(self, mesh=None, subdomains=None, boundaries=None,
+    def __init__(
+            self, mesh=None, subdomains=None, boundaries=None,
             subdomain_markers={'freespace': -1,
                                'material': -1,
                                'pml': -1,
@@ -132,6 +136,424 @@ def partitioner(comm, n, m, topo):
     offsets = np.array(offsets, dtype=np.int32)
     return dolfinx.cpp.graph.AdjacencyList_int32(dests)
     
+def CreateMeshOgive(
+        comm=MPI.COMM_WORLD,     # MPI communicator
+        model_rank=0,            # Rank of modelling process
+        w=10*lambda0,            # Width of antenna
+        t=lambda0/10,            # Thickness of antenna
+        d0=lambda0/2,            # Distance from antenna to radome
+        d=lambda0/(2*np.real(np.sqrt(3*(1-0.01j)))), # Radome thickness
+        alpha=2,                 # Ogive shape factor
+        H=5*lambda0,             # Height of straight part of radome
+        Htransition=lambda0,     # Length of transition region from fuselage
+        PMLcylindrical=False,    # Use a spherical PML or not
+        PMLpenetrate=False,      # Let the radome penetrate the bottom PML
+        Antenna=False,           # Include an antenna or not
+        AntennaMetalBase=False,  # Finish the structure with metal into PML
+        h=0.1*lambda0,           # Typical mesh size
+        hfine=None,              # Typical refined mesh size
+        verbosity=1,             # Verbosity of gmsh
+        visualize=False,         # Whether to call gmsh to visualize mesh
+        filename='ogivemesh.msh' # Name of file to save mesh in
+): 
+    """Create the mesh using gmsh. The geometry is an ogive radome, with or without an antenna disk, which can be free floating or on top of a metal block. The radome can extend into the surrounding PML, enabling the simulation of a semi-infinite structure."""
+
+    # Compute a few shape parameters
+    Rb = w/2 + d0 + d                           # Outer radome radius
+    Lb = alpha*Rb                               # Outer radome height
+    rhob = (Rb**2 + Lb**2)/(2*Rb)               #
+    Ra = Rb - d                                 # Inner radome radius
+    rhoa = rhob - d                             #
+    La = np.sqrt(rhoa**2 - (rhob - Rb)**2)      # Inner radome height
+    radius_domain = Lb + lambda0                # Radius of computational domain
+    radius_pml = radius_domain + 0.5*lambda0    # Outer radius of PML
+    radius_farfield = radius_domain - lambda0/2 # Radius at which to compute farfield
+    FF_d = lambda0                              # Distance from farfield to PML boundary
+    PML = PerfectlyMatchedLayer()               # Create PML data structure
+    PML.cylindrical = PMLcylindrical            # What kind of PML to make
+    if AntennaMetalBase:                        # Ensure that penetrated, cylindrical PML is used when specifying antenna with metal base
+        PML.cylindrical = True
+        PMLpenetrate = True
+    PML.d = lambda0/2                           # Cylindrical PML thickness
+    PML.zt = Lb + lambda0 + PML.d               # PML boundary at top
+    if PMLpenetrate:                            # PML boundary at bottom
+        PML.zb = -H
+    else:
+        PML.zb = -H - lambda0 - PML.d
+    PML.rho = Rb + lambda0 + PML.d              # PML boundary in cylindrical radius
+    PML.radius = radius_pml                     # Spherical PML boundary
+    if hfine == None:                           # If no refinement asked for
+        hfine = h
+        
+    gmsh.initialize()
+    if comm.rank == model_rank:
+        # Typical mesh size
+        gmsh.option.setNumber('General.Verbosity', verbosity)
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMin", hfine)
+        gmsh.option.setNumber("Mesh.CharacteristicLengthMax", h)
+
+        # Outer radome curve
+        nPoints = 10
+        zPoints = np.linspace(0, Lb, nPoints)
+        xPoints = np.sqrt(rhob**2 - zPoints**2) + Rb - rhob
+        radome_outer_points = []
+        for n in range(0, nPoints):
+            tag = gmsh.model.occ.addPoint(xPoints[n], zPoints[n], 0)
+            radome_outer_points.append(tag)
+        radome_outer_curve = gmsh.model.occ.addSpline(radome_outer_points)
+    
+        # Inner radome curve
+        nPoints = 10
+        zPoints = np.linspace(0, La, nPoints)
+        xPoints = np.sqrt(rhoa**2 - zPoints**2) + Ra - rhoa
+        radome_inner_points = []
+        for n in range(0, nPoints):
+            tag = gmsh.model.occ.addPoint(xPoints[n], zPoints[n], 0)
+            radome_inner_points.append(tag)
+        radome_inner_curve = gmsh.model.occ.addSpline(radome_inner_points)
+
+        # Straight part of radome
+        radome_bottom_inner = gmsh.model.occ.addPoint(Ra, -H, 0)
+        radome_bottom_outer = gmsh.model.occ.addPoint(Rb, -H, 0)
+        radome_transition_inner = gmsh.model.occ.addPoint(Ra, -Htransition, 0)
+        radome_transition_outer = gmsh.model.occ.addPoint(Rb, -Htransition, 0)
+        
+        # Join radome curves
+        radome_join1 = gmsh.model.occ.addLine(radome_outer_points[-1], radome_inner_points[-1])
+        radome_join2a = gmsh.model.occ.addLine(radome_inner_points[0], radome_transition_inner)
+        radome_join2b = gmsh.model.occ.addLine(radome_transition_inner, radome_bottom_inner)
+        radome_join3 = gmsh.model.occ.addLine(radome_bottom_inner, radome_bottom_outer)
+        radome_join4a = gmsh.model.occ.addLine(radome_bottom_outer, radome_transition_outer)
+        radome_join4b = gmsh.model.occ.addLine(radome_transition_outer, radome_outer_points[0])
+        transition_join1 = gmsh.model.occ.addLine(radome_outer_points[0], radome_inner_points[0])
+        transition_join2 = gmsh.model.occ.addLine(radome_transition_inner, radome_transition_outer)
+        radome_loop = gmsh.model.occ.addCurveLoop([radome_outer_curve, radome_join1, radome_inner_curve, transition_join1])
+        transition_loop = gmsh.model.occ.addCurveLoop([radome_join2a, transition_join2, radome_join4b, transition_join1])
+        hull_loop = gmsh.model.occ.addCurveLoop([radome_join2b, radome_join3, radome_join4a, transition_join2])
+
+        # Create domains for radome, transition, and hull
+        radome_domain = gmsh.model.occ.addPlaneSurface([radome_loop])
+        transition_domain = gmsh.model.occ.addPlaneSurface([transition_loop])
+        hull_domain = gmsh.model.occ.addPlaneSurface([hull_loop])
+
+        # Create antenna domain, seems crucial to reuse points defined in radome
+        if AntennaMetalBase: # Antenna surface connected to a metal fuselage
+            antenna_point1 = gmsh.model.occ.addPoint(0, 0, 0)
+            antenna_point2 = gmsh.model.occ.addPoint(w/2, 0, 0)
+            antenna_point3 = gmsh.model.occ.addPoint(w/2, -Htransition, 0)
+            antenna_point4a = radome_transition_inner
+            antenna_point4b = radome_transition_outer
+            antenna_point5 = radome_bottom_outer
+            antenna_point6 = gmsh.model.occ.addPoint(0, -H, 0)
+            
+            antenna_curve = gmsh.model.occ.addLine(antenna_point1, antenna_point2)
+            pec_curve1 = gmsh.model.occ.addLine(antenna_point2, antenna_point3)
+            pec_curve2 = gmsh.model.occ.addLine(antenna_point3, antenna_point4a)
+            pec_curve3 = gmsh.model.occ.addLine(antenna_point4a, antenna_point4b)
+            pec_curve4 = gmsh.model.occ.addLine(antenna_point4b, antenna_point5)
+            pec_curve = [pec_curve1, pec_curve2, pec_curve3, pec_curve4]
+            antenna_join1 = gmsh.model.occ.addLine(antenna_point5, antenna_point6)
+            antenna_join2 = gmsh.model.occ.addLine(antenna_point6, antenna_point1)
+            antenna_join = [antenna_join1, antenna_join2]
+            antenna_loop = gmsh.model.occ.addCurveLoop([antenna_curve] + pec_curve + antenna_join)
+            antenna_domain = gmsh.model.occ.addPlaneSurface([antenna_loop])
+
+            # Define functions to identify antenna and PEC regions geometrically
+            def AntennaSurface(CoM):
+                return np.allclose(CoM, [w/4, 0, 0])
+            def PECSurface(CoM):
+                return np.allclose(CoM, [w/2, -Htransition/2, 0]) or np.allclose(CoM, [(w/2 + Ra)/2, -Htransition, 0]) or np.allclose(CoM, [(Ra + Rb)/2, -Htransition, 0]) or np.allclose(CoM, [Rb, (-Htransition - H + PML.d)/2, 0]) or np.allclose(CoM, [Rb, -H + PML.d/2, 0])
+            
+        elif Antenna: # Just a metal strip
+            antenna_point1 = gmsh.model.occ.addPoint(0, 0, 0)
+            antenna_point2 = gmsh.model.occ.addPoint(w/2, 0, 0)
+            antenna_point3 = gmsh.model.occ.addPoint(w/2, -t, 0)
+            antenna_point4 = gmsh.model.occ.addPoint(0, -t, 0)
+
+            antenna_curve = gmsh.model.occ.addLine(antenna_point1, antenna_point2)
+            pec_curve1 = gmsh.model.occ.addLine(antenna_point2, antenna_point3)
+            pec_curve2 = gmsh.model.occ.addLine(antenna_point3, antenna_point4)
+            pec_curve = [pec_curve1, pec_curve2]
+            antenna_join = gmsh.model.occ.addLine(antenna_point4, antenna_point1)
+            antenna_loop = gmsh.model.occ.addCurveLoop([antenna_curve] + pec_curve + [antenna_join])
+            antenna_domain = gmsh.model.occ.addPlaneSurface([antenna_loop])
+
+            # Define functions to identify antenna and PEC regions geometrically
+            def AntennaSurface(CoM):
+                return np.allclose(CoM, [w/4, 0, 0])
+            def PECSurface(CoM):
+                return np.allclose(CoM, [w/2, -t/2, 0]) or np.allclose(CoM, [w/4, -t, 0])
+
+        gmsh.model.occ.synchronize()
+        
+        # Create free space and PML domains.
+        # There is one free space domain on each side of the farfield boundary.
+        if not PML.cylindrical: # Spherical PML
+            inner_point1 = gmsh.model.occ.addPoint(0, -radius_farfield, 0)
+            inner_point2 = gmsh.model.occ.addPoint(0, radius_farfield, 0)
+            outer_point1 = gmsh.model.occ.addPoint(0, -radius_domain, 0)
+            outer_point2 = gmsh.model.occ.addPoint(0, radius_domain, 0)
+            pml_point1 = gmsh.model.occ.addPoint(0, -radius_pml, 0)
+            pml_point2 = gmsh.model.occ.addPoint(0, radius_pml, 0)
+            
+            farfield_boundary = gmsh.model.occ.addCircle(0, 0, 0, radius_farfield, -1, -np.pi/2, np.pi/2)
+            domain_boundary = gmsh.model.occ.addCircle(0, 0, 0, radius_domain, -1, -np.pi/2, np.pi/2)
+            pml_boundary = gmsh.model.occ.addCircle(0, 0, 0, radius_pml, -1, -np.pi/2, np.pi/2)
+            outer_join1 = gmsh.model.occ.addLine(inner_point1, outer_point1)
+            outer_join2 = gmsh.model.occ.addLine(inner_point2, outer_point2)
+            inner_join = gmsh.model.occ.addLine(inner_point1, inner_point2)
+            pml_join1 = gmsh.model.occ.addLine(pml_point1, outer_point1)
+            pml_join2 = gmsh.model.occ.addLine(pml_point2, outer_point2)
+
+            outer_loop = gmsh.model.occ.addCurveLoop([farfield_boundary, outer_join2, domain_boundary, outer_join1])
+            inner_loop = gmsh.model.occ.addCurveLoop([farfield_boundary, inner_join])
+            pml_loop = gmsh.model.occ.addCurveLoop([pml_boundary, pml_join2, domain_boundary, pml_join1])
+            
+            outer_domain = gmsh.model.occ.addPlaneSurface([outer_loop])
+            inner_domain = gmsh.model.occ.addPlaneSurface([inner_loop])
+            pml_domain = gmsh.model.occ.addPlaneSurface([pml_loop])
+
+            # To conform with the formulation in the cylindrical PML
+            pml_boundary = [pml_boundary]
+            farfield_boundary = [farfield_boundary]
+            def PMLSurface(CoM):
+                return np.allclose(CoM[0], 2*PML.radius/np.pi)
+            CoM1 = gmsh.model.occ.getCenterOfMass(fdim, farfield_boundary[0])
+            def FarfieldSurface(CoM):
+                return np.allclose(CoM, CoM1)
+            
+        else: # Cylindrical PML
+            if not PMLpenetrate: # Far field boundary parallel to PML everywhere
+                inner_point1 = gmsh.model.occ.addPoint(0, PML.zb+FF_d, 0)
+                inner_point2 = gmsh.model.occ.addPoint(0, PML.zt-FF_d, 0)
+                inner_point3 = gmsh.model.occ.addPoint(PML.rho-FF_d, PML.zt-FF_d, 0)
+                inner_point4 = gmsh.model.occ.addPoint(PML.rho-FF_d, PML.zb+FF_d, 0)
+                outer_point1 = gmsh.model.occ.addPoint(0, PML.zb+PML.d, 0)
+                outer_point2 = gmsh.model.occ.addPoint(0, PML.zt-PML.d, 0)
+                outer_point3 = gmsh.model.occ.addPoint(PML.rho-PML.d, PML.zt-PML.d, 0)
+                outer_point4 = gmsh.model.occ.addPoint(PML.rho-PML.d, PML.zb+PML.d, 0)
+                pml_point1 = gmsh.model.occ.addPoint(0, PML.zb, 0)
+                pml_point2 = gmsh.model.occ.addPoint(0, PML.zt, 0)
+                pml_point3 = gmsh.model.occ.addPoint(PML.rho, PML.zt, 0)
+                pml_point4 = gmsh.model.occ.addPoint(PML.rho, PML.zb, 0)
+
+                farfield_line1 = gmsh.model.occ.addLine(inner_point2, inner_point3)
+                farfield_line2 = gmsh.model.occ.addLine(inner_point3, inner_point4)
+                farfield_line3 = gmsh.model.occ.addLine(inner_point4, inner_point1)
+                farfield_boundary = [farfield_line1, farfield_line2, farfield_line3]
+                domain_line1 = gmsh.model.occ.addLine(outer_point2, outer_point3)
+                domain_line2 = gmsh.model.occ.addLine(outer_point3, outer_point4)
+                domain_line3 = gmsh.model.occ.addLine(outer_point4, outer_point1)
+                domain_boundary = [domain_line1, domain_line2, domain_line3]
+                pml_line1 = gmsh.model.occ.addLine(pml_point2, pml_point3)
+                pml_line2 = gmsh.model.occ.addLine(pml_point3, pml_point4)
+                pml_line3 = gmsh.model.occ.addLine(pml_point4, pml_point1)
+                pml_boundary = [pml_line1, pml_line2, pml_line3]
+
+                outer_join1 = gmsh.model.occ.addLine(inner_point1, outer_point1)
+                outer_join2 = gmsh.model.occ.addLine(inner_point2, outer_point2)
+                inner_join = gmsh.model.occ.addLine(inner_point1, inner_point2)
+                pml_join1 = gmsh.model.occ.addLine(pml_point1, outer_point1)
+                pml_join2 = gmsh.model.occ.addLine(pml_point2, outer_point2)
+
+                outer_loop = gmsh.model.occ.addCurveLoop(farfield_boundary + [outer_join2] + domain_boundary + [outer_join1])
+                inner_loop = gmsh.model.occ.addCurveLoop(farfield_boundary + [inner_join])
+                pml_loop = gmsh.model.occ.addCurveLoop(pml_boundary + [pml_join2] + domain_boundary + [pml_join1])
+
+                outer_domain = gmsh.model.occ.addPlaneSurface([outer_loop])
+                inner_domain = gmsh.model.occ.addPlaneSurface([inner_loop])
+                pml_domain = gmsh.model.occ.addPlaneSurface([pml_loop])
+
+                CoM1 = gmsh.model.occ.getCenterOfMass(fdim, farfield_line1)
+                CoM2 = gmsh.model.occ.getCenterOfMass(fdim, farfield_line2)
+                CoM3 = gmsh.model.occ.getCenterOfMass(fdim, farfield_line3)
+                def FarfieldSurface(CoM):
+                    return np.allclose(CoM, CoM1) or np.allclose(CoM, CoM2) or np.allclose(CoM, CoM3)
+                
+            else: # The radome penetrates into the lower PML, no FF there
+                # inner_point1 is the same as outer_point1
+                # inner_point1 = gmsh.model.occ.addPoint(0, PML.zb+PML.d, 0)
+                inner_point2 = gmsh.model.occ.addPoint(0, PML.zt-FF_d, 0)
+                inner_point3 = gmsh.model.occ.addPoint(PML.rho-FF_d, PML.zt-FF_d, 0)
+                inner_point4 = gmsh.model.occ.addPoint(PML.rho-FF_d, PML.zb+PML.d, 0)
+                outer_point1 = gmsh.model.occ.addPoint(0, PML.zb+PML.d, 0)
+                outer_point2 = gmsh.model.occ.addPoint(0, PML.zt-PML.d, 0)
+                outer_point3 = gmsh.model.occ.addPoint(PML.rho-PML.d, PML.zt-PML.d, 0)
+                outer_point4 = gmsh.model.occ.addPoint(PML.rho-PML.d, PML.zb+PML.d, 0)
+                pml_point1 = gmsh.model.occ.addPoint(0, PML.zb, 0)
+                pml_point2 = gmsh.model.occ.addPoint(0, PML.zt, 0)
+                pml_point3 = gmsh.model.occ.addPoint(PML.rho, PML.zt, 0)
+                pml_point4 = gmsh.model.occ.addPoint(PML.rho, PML.zb, 0)
+
+                farfield_line1 = gmsh.model.occ.addLine(inner_point2, inner_point3)
+                farfield_line2 = gmsh.model.occ.addLine(inner_point3, inner_point4)
+                farfield_boundary = [farfield_line1, farfield_line2]
+                domain_line1 = gmsh.model.occ.addLine(outer_point2, outer_point3)
+                domain_line2 = gmsh.model.occ.addLine(outer_point3, outer_point4)
+                domain_boundary = [domain_line2, domain_line1] # Needed in reverse order when constructing loops
+                pml_line1 = gmsh.model.occ.addLine(pml_point2, pml_point3)
+                pml_line2 = gmsh.model.occ.addLine(pml_point3, pml_point4)
+                pml_line3 = gmsh.model.occ.addLine(pml_point4, pml_point1)
+                pml_boundary = [pml_line1, pml_line2, pml_line3]
+                outer_join1 = gmsh.model.occ.addLine(inner_point4, outer_point4)
+                outer_join2 = gmsh.model.occ.addLine(inner_point2, outer_point2)
+                inner_join1 = gmsh.model.occ.addLine(inner_point4, outer_point1)
+                inner_join2 = gmsh.model.occ.addLine(outer_point1, inner_point2)
+                pml_join1 = gmsh.model.occ.addLine(pml_point1, outer_point1)
+                pml_join2 = gmsh.model.occ.addLine(pml_point2, outer_point2)
+
+                outer_loop = gmsh.model.occ.addCurveLoop(farfield_boundary + [outer_join1] + domain_boundary + [outer_join2])
+                inner_loop = gmsh.model.occ.addCurveLoop(farfield_boundary + [inner_join1, inner_join2])
+                pml_loop = gmsh.model.occ.addCurveLoop(pml_boundary + [pml_join1, inner_join1, outer_join1] + domain_boundary + [pml_join2])
+
+                outer_domain = gmsh.model.occ.addPlaneSurface([outer_loop])
+                inner_domain = gmsh.model.occ.addPlaneSurface([inner_loop])
+                pml_domain = gmsh.model.occ.addPlaneSurface([pml_loop])
+
+                CoM1 = gmsh.model.occ.getCenterOfMass(fdim, farfield_line1)
+                CoM2 = gmsh.model.occ.getCenterOfMass(fdim, farfield_line2)
+                def FarfieldSurface(CoM):
+                    return np.allclose(CoM, CoM1) or np.allclose(CoM, CoM2)
+
+            def PMLSurface(CoM):
+                return np.allclose(CoM[0], PML.rho) or np.allclose(CoM[1], PML.zt) or np.allclose(CoM[1], PML.zb)
+            
+#        gmsh.model.occ.synchronize() # Seems to cause trouble with gmsh 4.12.2, according to experiments 240703
+
+        # Fragment radome domain from inner domain and PML
+        if PMLpenetrate: # Take several fragmentations into account
+            outDimTags, outDimTagsMap= gmsh.model.occ.fragment([(tdim, inner_domain), (tdim, pml_domain)], [(tdim, radome_domain), (tdim, transition_domain), (tdim, hull_domain)])
+            radome_domain_dimtags = outDimTagsMap[-3]
+            transition_domain_dimtags = outDimTagsMap[-2]
+            hull_domain_dimtags = outDimTagsMap[-1]
+            tmp_dimtags = radome_domain_dimtags + transition_domain_dimtags + hull_domain_dimtags
+            # Create lists of dimtags not containing the tool (the
+            # radome), since we cannot set multiple tags on the cells
+            inner_domain_dimtags = [x for x in outDimTagsMap[0] if x not in tmp_dimtags]
+            outer_domain_dimtags = [(tdim, outer_domain)]
+            pml_domain_dimtags = [x for x in outDimTagsMap[1] if x not in tmp_dimtags]
+            pml_hull_overlap_dimtags = [x for x in outDimTagsMap[1] if x in tmp_dimtags]
+            hull_domain_dimtags = [x for x in hull_domain_dimtags if x not in pml_hull_overlap_dimtags]
+            farfield_boundary_dimtags = [(fdim, x) for x in farfield_boundary]
+        else: # The radome is completely enclosed in the inner domain
+            outDimTags, outDimTagsMap = gmsh.model.occ.fragment([(tdim, inner_domain)], [(tdim, radome_domain), (tdim, transition_domain), (tdim, hull_domain)])
+            radome_domain_dimtags = outDimTagsMap[-3]
+            transition_domain_dimtags = outDimTagsMap[-2]
+            hull_domain_dimtags = outDimTagsMap[-1]
+            tmp_dimtags = radome_domain_dimtags + transition_domain_dimtags + hull_domain_dimtags
+            # Create lists of dimtags not containing the tool (the radome)
+            inner_domain_dimtags = [x for x in outDimTagsMap[0] if x not in tmp_dimtags]
+            outer_domain_dimtags = [(tdim, outer_domain)]
+            pml_domain_dimtags = [(tdim, pml_domain)]
+            farfield_boundary_dimtags = [(fdim, x) for x in farfield_boundary]
+            pml_hull_overlap_dimtags = [(tdim, -1)]
+        gmsh.model.occ.synchronize()
+
+        # Cut away the antenna region from the inner domain
+        if AntennaMetalBase: # Antenna + base also intersects radome and PML
+            outDimTags, outDimTagsMap = gmsh.model.occ.fragment(inner_domain_dimtags, [(tdim, antenna_domain)], removeTool=False)
+            inner_domain_dimtags = [(tdim, x[1]) for x in outDimTags if x not in outDimTagsMap[-1]]
+            gmsh.model.occ.remove([(tdim, x[1]) for x in outDimTagsMap[2]], recursive=True)
+            outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml_domain_dimtags, [(tdim, antenna_domain)], removeTool=True)
+            pml_domain_dimtags = [(tdim, x[1]) for x in outDimTags if x not in outDimTagsMap[-1]]
+            gmsh.model.occ.remove([(tdim, x[1]) for x in outDimTagsMap[-1]], recursive=True)
+            gmsh.model.occ.remove(hull_domain_dimtags, recursive=True)
+            gmsh.model.occ.remove(pml_hull_overlap_dimtags, recursive=True)
+        elif Antenna: # Antenna completely inside inner domain
+            inner_domain_dimtags, _ = gmsh.model.occ.cut(inner_domain_dimtags, [(tdim, antenna_domain)], removeTool=False)
+            gmsh.model.occ.remove([(tdim, antenna_domain)], recursive=True)
+
+        gmsh.model.occ.synchronize()
+
+        # Create physical groups for domains
+        freespace_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in inner_domain_dimtags+outer_domain_dimtags])
+        material_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in radome_domain_dimtags])
+        transition_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in transition_domain_dimtags])
+        hull_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in hull_domain_dimtags])
+        pml_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in pml_domain_dimtags])
+        if PMLpenetrate and not AntennaMetalBase:
+            pml_hull_overlap_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in pml_hull_overlap_dimtags])
+        else:
+            pml_hull_overlap_marker = -1
+        subdomain_markers = {'freespace': freespace_marker,
+                             'material': material_marker,
+                             'transition': transition_marker,
+                             'hull': hull_marker,
+                             'pml': pml_marker,
+                             'pml_hull_overlap': pml_hull_overlap_marker}
+
+        # Create physical groups for antenna surfaces and far field
+        # boundary. Based on geometry functions rather than gmsh
+        # entities.
+        axis_lines = []
+        pec_surface = []
+        antenna_surface = []
+        pml_surface = []
+        farfield_surface = []
+        for boundary in gmsh.model.occ.getEntities(dim=fdim):
+            CoM = gmsh.model.occ.getCenterOfMass(boundary[0], boundary[1])
+            if Antenna or AntennaMetalBase:
+                if PECSurface(CoM):
+                    pec_surface.append(boundary[1])
+                elif AntennaSurface(CoM):
+                    antenna_surface.append(boundary[1])
+            if PMLSurface(CoM):
+                pml_surface.append(boundary[1])
+            elif FarfieldSurface(CoM):
+                farfield_surface.append(boundary[1])
+            elif np.allclose(CoM[0], 0):
+                # Need to be careful not adding old lines remaining after
+                # cutting out antenna shape, they do not seem to disappear
+                if not np.allclose(CoM, [0, 0, 0]) and not np.allclose(CoM, [0, -t/2, 0]): 
+                    axis_lines.append(boundary[1])
+        if Antenna or AntennaMetalBase:
+            pec_surface_marker = gmsh.model.addPhysicalGroup(fdim, pec_surface)
+            antenna_surface_marker = gmsh.model.addPhysicalGroup(fdim, antenna_surface)
+        else:
+            pec_surface_marker = -1
+            antenna_surface_marker = -1
+        farfield_surface_marker = gmsh.model.addPhysicalGroup(fdim, farfield_surface)
+        pml_surface_marker = gmsh.model.addPhysicalGroup(fdim, pml_surface)
+        axis_marker = gmsh.model.addPhysicalGroup(fdim, axis_lines)
+#        gmsh.model.occ.synchronize()
+        boundary_markers = {'pec': pec_surface_marker,
+                            'antenna': antenna_surface_marker,
+                            'farfield': farfield_surface_marker,
+                            'pml': pml_surface_marker,
+                            'axis': axis_marker}
+
+        # Refine mesh in hull and transition region. Locate points by
+        # geometry rather than gmsh entities.
+        tol = 1e-6
+        if AntennaMetalBase:
+            points_dimtags = gmsh.model.getEntitiesInBoundingBox(Ra-tol, -Htransition-tol, 0, Rb+tol, 0+tol, 0, dim=0)
+        else:
+            points_dimtags = gmsh.model.getEntitiesInBoundingBox(Ra-tol, -H-tol, 0, Rb+tol, 0+tol, 0, dim=0)
+        gmsh.model.mesh.setSize(points_dimtags, hfine)
+        
+        # Generate mesh
+        gmsh.model.mesh.generate(tdim)
+        gmsh.model.mesh.removeDuplicateNodes() # Some nodes seem to be duplicated
+#        gmsh.model.mesh.removeDuplicateElements()
+        
+        # Save mesh for retrieval of function spaces later on
+        gmsh.write(filename)
+
+        if visualize:
+            gmsh.fltk.run()
+    else: # Some data generated by the meshing that is needed on all ranks
+        subdomain_markers = None
+        boundary_markers = None
+    subdomain_markers = comm.bcast(subdomain_markers, root=model_rank)
+    boundary_markers = comm.bcast(boundary_markers, root=model_rank)
+
+    mesh, subdomains, boundaries = dolfinx.io.gmshio.model_to_mesh(
+        gmsh.model, comm=comm, rank=model_rank, gdim=tdim)
+    gmsh.finalize()
+
+    meshdata = MeshData(mesh=mesh, subdomains=subdomains, boundaries=boundaries, subdomain_markers=subdomain_markers, boundary_markers=boundary_markers, PML=PML, comm=comm, model_rank=model_rank)
+
+    return meshdata
 
 def CreateMeshSphere(
         comm=MPI.COMM_WORLD,        # MPI communicator

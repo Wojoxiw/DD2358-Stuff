@@ -366,7 +366,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     
     def pml_epsr_murinv(pml_coords):
         '''
-        Transforms the given coordinates into stretched coordinates (this implements the pml)
+        Transforms epsr, mur, using the given stretched coordinates (this implements the pml)
         :param pml_coords: the coordinates
         '''
         J = ufl.grad(pml_coords)
@@ -378,7 +378,7 @@ def runScatt3d(runName, reference = False, folder = 'data3D/', verbose=True, vie
     
     x, y, z = ufl.SpatialCoordinate(mesh)
     r = ufl.real(ufl.sqrt(x**2 + y**2)) ## cylindrical radius. need to set this to real because I compare against it later
-    height_dom_spheroid = ufl.conditional(ufl.ge(r, R_dom), height_dom/2, (height_dom/2+d_spheroid)*ufl.real(ufl.sqrt(1-(r/(R_dom+R_extra_spheroid_dom))**2)))   ##whatever the great height is, spheroid or domain
+    height_dom_spheroid = ufl.conditional(ufl.ge(r, R_dom), height_dom/2, (height_dom/2+d_spheroid)*ufl.real(ufl.sqrt(1-(r/(R_dom+R_extra_spheroid_dom))**2)))   ##whatever the greater height is, spheroid or domain
     height_pml_spheroid = (height_pml/2+d_spheroid)*ufl.sqrt(1-(r/(R_pml+R_extra_spheroid_pml))**2) ##should always be ge the pml cylinder's height
     x_stretched = pml_stretch(x, r, k0, x_dom=R_dom, x_pml=R_pml)
     y_stretched = pml_stretch(y, r, k0, x_dom=R_dom, x_pml=R_pml)

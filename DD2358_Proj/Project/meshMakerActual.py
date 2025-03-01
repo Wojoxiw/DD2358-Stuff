@@ -9,14 +9,17 @@ import sys
 import pyvista
 from scripts import memTimeEstimation
 from scipy.constants import pi, c as c0
+from timeit import default_timer as timer
 
 class MeshData():
     """Data structure for the mesh (all geometry) and related metadata."""
-    def __init__(self,  
-                 problem,           
-                 fname = '',
-                 verbosity = 0,     
-                 h = 1/15,          
+    def __init__(self,
+                 comm,
+                 fname,
+                 f0 = 10e9,
+                 verbosity = 0,
+                 model_rank = 0,
+                 h = 1/15,
                  domain_geom = 'domedCyl', 
                  object_geom = 'sphere',
                  defect_geom = 'cylinder',
@@ -34,13 +37,16 @@ class MeshData():
                  defect_radius = 0.2,
                  defect_height = 0.6,
                  defect_angles = [45, 67, 32],
+                 viewGMSH = False,
                 ):
         '''
         Makes it - given various inputs
-        :param problem: The scattering problem which is creating this mesh. Some variables are copied/used from it.
-        :param fname: Mesh filename (+location from script)
-        :param verbosity: Verbosity passed on to gmsh. If greater than 0, also print some computation times/sizes maybe
+        :param comm: the MPI communicator
+        :param fname: Mesh filename + directory
+        :param f0: Design frequency - things will be scaled by the corresponding wavelength
         :param h: typical mesh size, in fractions of a wavelength
+        :param verbosity: This is passed to gmsh, also if > 0, I print more stuff
+        :param model_rank: Rank of the master model - for saving, plotting, etc.
         :param domain_geom: The geometry of the domain (and PML). Only the default for now
         :param object_geom: Geometry of the object. Only the default for now
         :param object_geom: Geometry of the defect. Only the default for now
@@ -58,18 +64,18 @@ class MeshData():
         :param defect_radius: If defect is a sphere (or cylinder), the radius
         :param defect_height: If defect is a cylinder, the height
         :param defect_angles: [x, y, z] angles to rotate about these axes
+        :param viewGMSH: If True, plots the mesh after creation then exits
         '''
         
-        self.prob = problem                                 # problem will contain this mesh, which links back to grab some info
-        self.comm = self.prob.comm                               # MPI communicator
-        self.model_rank = self.prob.model_rank                   # Model rank
-        self.lambda0 = self.prob.lambda0                         # Design wavelength (things are scaled from this)
-        if(fname == ''): # if not given a name, use the problem's name
-            fname = problem.dataFolder+problem.name+'mesh.msh'
+        self.comm = comm                               # MPI communicator
+        self.model_rank = model_rank                   # Model rank
+        self.lambda0 = c0/f0                         # Design wavelength (things are scaled from this)
+        if(fname == ''): # if not given a name, just use 'mesh'
+            fname = 'mesh.msh'
         self.fname = fname                                  # Mesh filename (+location from script)
-        self.verbosity = verbosity
         self.h = h
         self.domain_geom = domain_geom            # setting to choose domain geometry - current only 'domedCyl' exists
+        self.verbosity = verbosity
         
         ## Set up geometry variables - in units of lambda0 unless otherwise specified
         if(self.domain_geom == 'domedCyl'): ## a cylinder with an oblate-spheroid 'dome' added over and underneath
@@ -112,6 +118,7 @@ class MeshData():
             print('Nonvalid object geom, exiting...')
             exit()
         
+        self.defect_angles = defect_angles ## [x, y, z] rotations
         if(defect_geom == 'cylinder'):
             self.defect_geom = defect_geom
             self.defect_radius = defect_radius * self.lambda0
@@ -121,30 +128,131 @@ class MeshData():
             exit()
         
         ## Finally, actually make the mesh
-        self.createMesh()
+        self.createMesh(viewGMSH)
+        self.ncells = self.mesh.topology.index_map(2).size_global ## all cells, rather than in this MPI process
         
-    def createMesh(self):
-        def makeAntennas(): ## makes the antennas
-            pass
         
-        def makeObject(): ## makes the object and defects
-            pass
-        
+    def createMesh(self, viewGMSH):
+        tdim = 3 ## Tetrahedra dimensionality - 3D
+        fdim = tdim - 1 ## Facet dimensionality - 2D
         gmsh.initialize()
         if self.comm.rank == self.model_rank: ## make all the definitions through the master-rank process
-            if(self.verbosity > 0): ## start by giving some estimated calculation times/memory costs
-                size = pi*self.PML_radius**2*self.PML_height/self.h**3 *4 ### a rough estimation. added factor at the end to get closer
-                estmem, esttime = memTimeEstimation(size, self.problem.Nf)
-                print('Variables created, generating mesh...')
-                print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
-                print(f'Estimated computation time for size {size:.3e}, Nf = {self.problem.Nf}: {esttime/3600:.3f} hours')
+            if(self.verbosity > 0):
+                t1 = timer()
             
             ## Give some mesh settings: verbosity, max. and min. mesh lengths
             gmsh.option.setNumber('General.Verbosity', self.verbosity)
             gmsh.option.setNumber("Mesh.CharacteristicLengthMin", self.h)
             gmsh.option.setNumber("Mesh.CharacteristicLengthMax", self.h)
             
-            makeAntennas()
-            makeObject()
+            inPECSurface = []; inAntennaSurface = []; antennas_DimTags = []
+            ## Make the antennas
+            x_antenna = np.zeros((self.N_antennas, 3))
+            x_pec = np.zeros((self.N_antennas, 5, 3)) ### for each antenna, and PEC surface (of which there are 5), a position of that surface
+            for n in range(self.N_antennas): ## make each antenna, and prepare its surfaces to either be PEC or be the excitation surface
+                box = gmsh.model.occ.addBox(-self.antenna_width/2, -self.antenna_depth, -self.antenna_height/2, self.antenna_width, self.antenna_depth, self.antenna_height) ## the antenna surface at (0, 0, 0)
+                gmsh.model.occ.rotate([(tdim, box)], 0, 0, 0, 0, 0, 1, self.rot_antennas[n])
+                gmsh.model.occ.translate([(tdim, box)], self.pos_antennas[n,0], self.pos_antennas[n,1], self.pos_antennas[n,2])
+                antennas_DimTags.append((tdim, box))
+                x_antenna[n] = self.pos_antennas[n, :] ## the translation to the antenna's position
+                Rmat = np.array([[np.cos(self.rot_antennas[n]), -np.sin(self.rot_antennas[n]), 0],
+                                 [np.sin(self.rot_antennas[n]), np.cos(self.rot_antennas[n]), 0],
+                                 [0, 0, 1]]) ## matrix for rotation about the z-axis
+                x_pec[n, 0] = x_antenna[n] + np.dot(Rmat, np.array([0, -self.antenna_depth/2, -self.antenna_height/2])) ## bottom surface (in z)
+                x_pec[n, 1] = x_antenna[n] + np.dot(Rmat, np.array([0, -self.antenna_depth/2,  self.antenna_height/2])) ## top surface (in z)
+                x_pec[n, 2] = x_antenna[n] + np.dot(Rmat, np.array([-self.antenna_width/2, -self.antenna_depth/2, 0])) ## left surface (in x)
+                x_pec[n, 3] = x_antenna[n] + np.dot(Rmat, np.array([self.antenna_width/2, -self.antenna_depth/2, 0])) ## right surface (in x)
+                x_pec[n, 4] = x_antenna[n] + np.dot(Rmat, np.array([0, -self.antenna_depth, 0])) ## back surface (in y)
+                inAntennaSurface.append(lambda x: np.allclose(x, x_antenna[n])) ## (0, 0, 0) - the antenna surface
+                inPECSurface.append(lambda x: np.allclose(x, x_pec[n,0]) or np.allclose(x, x_pec[n,1]) or np.allclose(x, x_pec[n,2]) or np.allclose(x, x_pec[n,3]) or np.allclose(x, x_pec[n,4]))
+        
+            matDimTags = []; defectDimTags = []
+            ## Make the object and defects
+            if(self.object_geom == 'sphere'):
+                obj = gmsh.model.occ.addSphere(0,0,0, self.object_radius) ## add it to the origin
+                matDimTags.append((tdim, obj)) ## the material fills the object
+            if(self.defect_geom == 'cylinder'):
+                defect1 = gmsh.model.occ.addCylinder(0,0,-self.defect_height/2,0,0,self.defect_height, self.defect_radius) ## cylinder centered on the origin
+                ## apply some rotations around the origin, and each axis
+                gmsh.model.occ.rotate([(tdim, defect1)], 0, 0, 0, 1, 0, 0, self.defect_angles[0])
+                gmsh.model.occ.rotate([(tdim, defect1)], 0, 0, 0, 0, 1, 0, self.defect_angles[1])
+                gmsh.model.occ.rotate([(tdim, defect1)], 0, 0, 0, 0, 0, 1, self.defect_angles[2])
+                defectDimTags.append((tdim, defect1))
             
+            ## Makes the domain and the PML
+            domain_cyl = gmsh.model.occ.addCylinder(0, 0, -self.domain_height/2, 0, 0, self.domain_height, self.domain_radius)
+            domain = [(tdim, domain_cyl)] # dim, tags
+            pml_cyl = gmsh.model.occ.addCylinder(0, 0, -self.PML_height/2, 0, 0, self.PML_height, self.PML_radius)
+            pml = [(tdim, pml_cyl)] # dim, tags
+            if(self.dome_height>0): ## add a spheroid domed top and bottom with some specified extra height, that passes through the cylindrical 'corner' (to try to avoid waves being parallel to the PML)
+                domain_spheroid = gmsh.model.occ.addSphere(0, 0, 0, self.domain_radius+self.domain_spheroid_extraRadius)
+                gmsh.model.occ.dilate([(tdim, domain_spheroid)], 0, 0, 0, 1, 1, self.domain_a)
+                domain_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -self.domain_height/2-self.dome_height, 0, 0, self.domain_height+self.dome_height*2, self.domain_radius)
+                domed_ceilings = gmsh.model.occ.intersect([(tdim, domain_spheroid)], [(tdim, domain_extraheight_cyl)])
+                domain = gmsh.model.occ.fuse([(tdim, domain_cyl)], domed_ceilings[0])[0] ## [0] to get  dimTags
+                
+                pml_spheroid = gmsh.model.occ.addSphere(0, 0, 0, self.PML_radius+self.PML_spheroid_extraRadius)
+                gmsh.model.occ.dilate([(tdim, pml_spheroid)], 0, 0, 0, 1, 1, self.PML_a)
+                pml_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -self.PML_height/2-self.dome_height, 0, 0, self.PML_height+self.dome_height*2, self.PML_radius)
+                domed_ceilings = gmsh.model.occ.intersect([(tdim, pml_spheroid)], [(tdim, pml_extraheight_cyl)])
+                pml = gmsh.model.occ.fuse([(tdim, pml_cyl)], domed_ceilings[0])[0]
+            
+            # Create fragments and dimtags
+            outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + antennas_DimTags)
+            removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-self.N_antennas:]]]
+            defectDimTags = [x[0] for x in outDimTagsMap[3:] if x[0] not in removeDimTags]
+            matDimTags = [x for x in outDimTagsMap[2] if x not in defectDimTags]
+            domainDimTags = [x for x in outDimTagsMap[1] if x not in removeDimTags+matDimTags+defectDimTags]
+            pmlDimTags = [x for x in outDimTagsMap[0] if x not in domainDimTags+defectDimTags+matDimTags+removeDimTags]
+            gmsh.model.occ.remove(removeDimTags)
+            gmsh.model.occ.synchronize()
+            
+            # Make physical groups for domains and PML
+            mat_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in matDimTags])
+            defect_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in defectDimTags])
+            domain_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in domainDimTags])
+            pml_marker = gmsh.model.addPhysicalGroup(tdim, [x[1] for x in pmlDimTags])
+            
+            # Identify antenna surfaces and make physical groups (by checking the Center-of-Mass of each surface entity)
+            pec_surface = []
+            antenna_surface = []
+            for boundary in gmsh.model.occ.getEntities(dim=fdim):
+                CoM = gmsh.model.occ.getCenterOfMass(boundary[0], boundary[1])
+                for n in range(len(inPECSurface)): ## iterate over all of these
+                    if inPECSurface[n](CoM):
+                        pec_surface.append(boundary[1])
+                for n in range(len(inAntennaSurface)): ## iterate over all of these
+                    if inAntennaSurface[n](CoM):
+                        antenna_surface.append(boundary[1])
+            pec_surface_marker = gmsh.model.addPhysicalGroup(fdim, pec_surface)
+            antenna_surface_markers = [gmsh.model.addPhysicalGroup(fdim, [s]) for s in antenna_surface]
+            gmsh.model.occ.synchronize()
+            gmsh.model.mesh.generate(tdim)
+            gmsh.write(self.fname)
+            
+            if(viewGMSH):
+                gmsh.fltk.run()
+                exit()
+            
+        else: ## some data is also needed for subordinate processes
+            mat_marker = None
+            defect_marker = None
+            domain_marker = None
+            pml_marker = None
+            pec_surface_marker = None
+            antenna_surface_markers = None
+            
+        self.mat_marker = self.comm.bcast(mat_marker, root=self.model_rank)
+        self.defect_marker = self.comm.bcast(defect_marker, root=self.model_rank)
+        self.domain_marker = self.comm.bcast(domain_marker, root=self.model_rank)
+        self.pml_marker = self.comm.bcast(pml_marker, root=self.model_rank)
+        self.pec_surface_marker = self.comm.bcast(pec_surface_marker, root=self.model_rank)
+        self.antenna_surface_markers = self.comm.bcast(antenna_surface_markers, root=self.model_rank)
+            
+        self.mesh, self.subdomains, self.boundaries = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm=self.comm, rank=self.model_rank, gdim=tdim)
+        gmsh.finalize()
+        
+        if(self.verbosity > 0 and self.comm.rank == self.model_rank): ## start by giving some estimated calculation times/memory costs
+            meshingTime = timer() - t1
+            print(f'Mesh generated in {meshingTime:.3e} s')
             
