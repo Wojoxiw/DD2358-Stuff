@@ -1,15 +1,10 @@
 # encoding: utf-8
 ### Modification of scatt2d to handle 3d geometry
+# Old version, used for testing and initial coding
 # Stripped down for simplicity for DD2358 course
-# Simple scattering case of 2 antennas at a 90 degree angle, with a sphere in the center
 #
-# Daniel Sjoberg, 2024-12-13
+# Adapted from 2D code started by Daniel Sjoberg, 2024-12-13
 # Alexandros Pallaris, after that
-
-# use pytest
-# use pylint
-# use sphinx
-# use logging instead of printing, maybe?
 
 import os
 os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
@@ -605,7 +600,7 @@ if __name__ == '__main__':
     #memTimeEstimation(printPlots = True)
     ## to get a good memory usage, call the calculations with memory_usage, passing in args and kwargs
     ## with MPI, each process seems to take about the same amount of memory
-    mem_usage = MPInum * memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : False}), max_usage = True) 
+    mem_usage = MPInum * memory_usage((runScatt3d, (runName,), {'folder' : folder, 'reference' : True, 'viewGMSH' : True}), max_usage = True) 
     
     print('Max. memory:',mem_usage/1000,'GiB'+f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
     if(comm.rank == model_rank):

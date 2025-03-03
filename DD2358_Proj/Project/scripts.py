@@ -7,6 +7,7 @@ Created on 27 feb. 2025
 import numpy as np
 from matplotlib import pyplot as plt
 import scipy
+import os
 
 def memTimeEstimation(numCells = 0, Nf = 0, printPlots = False):
     '''
@@ -90,3 +91,32 @@ def memTimeAppend(numCells, Nf, mem, time, reference, folder = ''):
     #file.write("\n")
     np.savetxt(file, np.array([mem, time, numCells, Nf, reference]).reshape(1, 5), fmt='%1.5e')
     file.close()
+    
+class runTimesMems():
+    '''
+    Stores data about the previous runtimes, to be saved/loaded with numpy. This holds them like a list, and has some utility functions.
+    '''
+    def __init__(self, folder):
+        self.fpath = folder+'prevRuns.npz'
+        if os.path.isfile(self.fpath):
+            np.load(self.fpath)['prevRuns']
+        else:
+            np.savez(self.fpath, prevRuns = self)
+        
+    class runTimeMem():
+        '''
+        The data of one previous run.
+        '''
+        def __init__(self, meshingTime, calcTime, MPInum):
+            self.meshingTime = meshingTime
+            self.calcTime = calcTime
+            self.MPInum = MPInum
+            
+    def memTimeAppend(self):
+        pass
+    
+    def memTimeEstimation(self):
+        pass
+    
+    def showPlots(self):
+        pass

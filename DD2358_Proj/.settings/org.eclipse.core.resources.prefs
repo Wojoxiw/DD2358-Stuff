@@ -1,10 +1,8 @@
 eclipse.preferences.version=1
-encoding//Project/Scatt3D.py=utf-8
+encoding//Project/Scatt3D.old=utf-8
 encoding//Project/TestStuff/lsqr_dask.py=utf-8
 encoding//Project/TestStuff/svd_test.py=utf-8
 encoding//Project/meshMaker.py=utf-8
-encoding//Project/meshMakerActual.py=utf-8
 encoding//Project/runScatt3D.py=utf-8
 encoding//Project/scatteringProblem.py=utf-8
-encoding//Project/test.py=utf-8
 encoding/<project>=windows-1252

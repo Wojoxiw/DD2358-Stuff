@@ -1,23 +1,26 @@
 # encoding: utf-8
 ## this file makes the mesh
 
+
+from mpi4py import MPI
 import numpy as np
 import dolfinx
 import ufl
 import basix
-from mpi4py import MPI
+import functools
+from timeit import default_timer as timer
 import gmsh
 import sys
 import pyvista
-from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0
+from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 eta0 = np.sqrt(mu0/eps0)
 
-class scatt3DProblem():
+class Scatt3DProblem():
     """Class to hold definitions and functions for simulating scattering or transmission of electromagnetic waves for a rotationally symmetric structure."""
     def __init__(self,
-                 refMeshdata, # Mesh and metadata for the reference case
-                 DUTMeshdata, # Mesh and metadata for the DUT case - should just include defects into the object (this will change the mesh)
                  comm, # MPI communicator
+                 refMeshdata, # Mesh and metadata for the reference case
+                 DUTMeshdata = None, # Mesh and metadata for the DUT case - should just include defects into the object (this will change the mesh)
                  verbosity = 0,   ## if > 0, I print more stuff
                  f0=10e9,             # Frequency of the problem
                  epsr_bkg=1,          # Permittivity of the background medium
@@ -33,18 +36,22 @@ class scatt3DProblem():
                  Nf = 1,              # Number of frequency-points to calculate
                  BW = 4e9,              # Bandwidth (equally spaced around f0)
                  dataFolder = 'data3D/', # Folder where data is stored
+                 name = 'testRun', # Name of this particular simulation
                  pol = 'vert', ## Polarization of the antenna excitation - can be either 'vert' or 'horiz' (untested)
                  computeImmediately = True, ## compute solutions at the end of initialization
-                 computeReference = False, # Computes the reference simulation, where no defects are included
+                 computeDUT = False, # If computing immediately, computes the DUT simulation, where defects are included
+                 ErefEdut = False, # compute optimization vectors with Eref*Edut, a less-approximated version of the equation. Should provide better results, but can only be used in simulation
                  ):
         """Initialize the problem."""
         
         self.dataFolder = dataFolder
+        self.name = name
         self.MPInum = MPInum                      # Number of MPI processes (used for estimating computational costs)
         self.comm = comm
         self.model_rank = model_rank
         self.verbosity = verbosity
-        self.computeReference = computeReference
+        
+        self.ErefEdut = ErefEdut
         
         self.tdim = 3                             # Dimension of triangles/tetraedra. 3 for 3D
         self.fdim = self.tdim - 1                      # Dimension of facets
@@ -71,15 +78,24 @@ class scatt3DProblem():
         # Set up mesh information
         self.refMeshdata = refMeshdata
         self.refMeshdata.mesh.topology.create_connectivity(self.tdim, self.tdim)
+        if(DUTMeshdata != None):
+            self.DUTMeshdata = DUTMeshdata
+            self.DUTMeshdata.mesh.topology.create_connectivity(self.tdim, self.tdim)
         
+        t1 = timer()
         # Initialize function spaces, boundary conditions, and PML
         self.InitializeFEM()
         self.InitializeMaterial()
-        self.InitializePML()
-        
-        # Calculations solutions
+        self.CalculatePML(self.k0) ## this is recalculated for each frequency, in ComputeSolutions - run it here just to initialize variables (not sure if needed)
+
+        # Calculate solutions
         if(computeImmediately):
-            self.ComputeSolutions()
+            self.ComputeSolutions(computeDUT = computeDUT)
+            self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator
+            self.makeOptVectors()
+            if(self.verbosity > 0):
+                print(f'Computations for {self.name} completed in {self.calcTimes:.3e} s')
+                sys.stdout.flush()
         
     def InitializeFEM(self):
         # Set up some FEM function spaces and boundary condition stuff.
@@ -100,15 +116,15 @@ class scatt3DProblem():
         
     def InitializeMaterial(self):
         # Set up material parameters. Not chancing mur for now, need to edit this if doing so
-        Wspace = dolfinx.fem.functionspace(self.refMeshdata.mesh, ("DG", 0))
-        self.epsr = dolfinx.fem.Function(Wspace)
-        self.mur = dolfinx.fem.Function(Wspace)
+        self.Wspace = dolfinx.fem.functionspace(self.refMeshdata.mesh, ("DG", 0))
+        self.epsr = dolfinx.fem.Function(self.Wspace)
+        self.mur = dolfinx.fem.Function(self.Wspace)
         self.epsr.x.array[:] = self.epsr_bkg
         self.mur.x.array[:] = self.mur_bkg
         mat_cells = self.refMeshdata.subdomains.find(self.refMeshdata.mat_marker)
-        mat_dofs = dolfinx.fem.locate_dofs_topological(Wspace, entity_dim=self.tdim, entities=mat_cells)
+        mat_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=mat_cells)
         defect_cells = self.refMeshdata.subdomains.find(self.refMeshdata.defect_marker)
-        defect_dofs = dolfinx.fem.locate_dofs_topological(Wspace, entity_dim=self.tdim, entities=defect_cells)
+        defect_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=defect_cells)
         self.epsr.x.array[mat_dofs] = self.material_epsr
         self.mur.x.array[mat_dofs] = self.material_mur
         self.epsr.x.array[defect_dofs] = self.material_epsr
@@ -118,9 +134,14 @@ class scatt3DProblem():
         self.mur.x.array[defect_dofs] = self.defect_mur
         self.epsr_array_dut = self.epsr.x.array.copy()
         
-    def InitializePML(self):
+    def CalculatePML(self, k):
+        '''
+        Set up the PML - stretched coordinates to form a perfectly-matched layer which absorbs incoming (perpendicular) waves
+         Since we calculate at many frequencies, recalculate this for each freq. (Could also precalc it for each freq...)
+        :param k: Frequency used for coordinate stretching.
+        '''
         # Set up the PML
-        def pml_stretch(y, x, k0, x_dom=0, x_pml=1, n=3, R0=1e-10):
+        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=1e-10):
             '''
             Calculates the PML stretching of a coordinate
             :param y: the coordinate to be stretched
@@ -131,7 +152,7 @@ class scatt3DProblem():
             :param n: order
             :param R0: intended damping (based on relative strength of reflection?)
             '''
-            return y*(1 - 1j*(n + 1)*np.log(1/R0)/(2*k0*np.abs(x_pml - x_dom))*((x - x_dom)/(x_pml - x_dom))**n)
+            return y*(1 - 1j*(n + 1)*np.log(1/R0)/(2*k*np.abs(x_pml - x_dom))*((x - x_dom)/(x_pml - x_dom))**n)
 
         def pml_epsr_murinv(pml_coords):
             '''
@@ -148,34 +169,25 @@ class scatt3DProblem():
         if(self.refMeshdata.domain_geom == 'domedCyl'): ## implement it for this geometry
             x, y, z = ufl.SpatialCoordinate(self.refMeshdata.mesh)
             r = ufl.real(ufl.sqrt(x**2 + y**2)) ## cylindrical radius. need to set this to real because I compare against it later
-            self.refMeshdata.domain_height_spheroid = ufl.conditional(ufl.ge(r, self.refMeshdata.domain_radius), self.refMeshdata.domain_height/2, (self.refMeshdata.domain_height/2+self.refMeshdata.dome_height)*ufl.real(ufl.sqrt(1-(r/(self.refMeshdata.domain_radius+self.refMeshdata.domain_spheroid_extraRadius))**2)))   ##start the z-stretching at, at minmum, the height of the domain cylinder
-            self.refMeshdata.PML_height_spheroid = (self.refMeshdata.PML_height/2+self.refMeshdata.dome_height)*ufl.sqrt(1-(r/(self.refMeshdata.PML_radius+self.refMeshdata.PML_spheroid_extraRadius))**2) ##should always be ge the pml cylinder's height
-            x_stretched = pml_stretch(x, r, self.k0, x_dom=self.refMeshdata.domain_radius, x_pml=self.refMeshdata.PML_radius)
-            y_stretched = pml_stretch(y, r, self.k0, x_dom=self.refMeshdata.domain_radius, x_pml=self.refMeshdata.PML_radius)
-            z_stretched = pml_stretch(z, abs(z), self.k0, x_dom=self.refMeshdata.domain_height_spheroid, x_pml=self.refMeshdata.PML_height_spheroid) ## /2 since the height is from - to +
+            domain_height_spheroid = ufl.conditional(ufl.ge(r, self.refMeshdata.domain_radius), self.refMeshdata.domain_height/2, (self.refMeshdata.domain_height/2+self.refMeshdata.dome_height)*ufl.real(ufl.sqrt(1-(r/(self.refMeshdata.domain_radius+self.refMeshdata.domain_spheroid_extraRadius))**2)))   ##start the z-stretching at, at minmum, the height of the domain cylinder
+            PML_height_spheroid = (self.refMeshdata.PML_height/2+self.refMeshdata.dome_height)*ufl.sqrt(1-(r/(self.refMeshdata.PML_radius+self.refMeshdata.PML_spheroid_extraRadius))**2) ##should always be ge the pml cylinder's height
+            x_stretched = pml_stretch(x, r, k, x_dom=self.refMeshdata.domain_radius, x_pml=self.refMeshdata.PML_radius)
+            y_stretched = pml_stretch(y, r, k, x_dom=self.refMeshdata.domain_radius, x_pml=self.refMeshdata.PML_radius)
+            z_stretched = pml_stretch(z, abs(z), k, x_dom=domain_height_spheroid, x_pml=PML_height_spheroid) ## /2 since the height is from - to +
             x_pml = ufl.conditional(ufl.ge(abs(r), self.refMeshdata.domain_radius), x_stretched, x) ## stretch when outside radius of the domain
             y_pml = ufl.conditional(ufl.ge(abs(r), self.refMeshdata.domain_radius), y_stretched, y) ## stretch when outside radius of the domain
-            z_pml = ufl.conditional(ufl.ge(abs(z), self.refMeshdata.domain_height_spheroid), z_stretched, z) ## stretch when outside the height of the cylinder of the domain (or oblate spheroid roof with factor a_dom/a_pml - should only be higher/lower inside the domain radially)
+            z_pml = ufl.conditional(ufl.ge(abs(z), domain_height_spheroid), z_stretched, z) ## stretch when outside the height of the cylinder of the domain (or oblate spheroid roof with factor a_dom/a_pml - should only be higher/lower inside the domain radially)
         pml_coords = ufl.as_vector((x_pml, y_pml, z_pml))
         self.epsr_pml, self.murinv_pml = pml_epsr_murinv(pml_coords)
 
-        rho, z = ufl.SpatialCoordinate(self.mesh)
-        if not self.PML.cylindrical: # Spherical PML
-            r = ufl.sqrt(rho**2 + z**2)
-            rho_stretched = pml_stretch(rho, r, self.k0, x_dom=self.PML.radius-self.PML.d, x_pml=self.PML.radius)
-            z_stretched = pml_stretch(z, r, self.k0, x_dom=self.PML.radius-self.PML.d, x_pml=self.PML.radius)
-            rho_pml = ufl.conditional(ufl.ge(abs(r), self.PML.radius-self.PML.d), rho_stretched, rho)
-            z_pml = ufl.conditional(ufl.ge(abs(r), self.PML.radius-self.PML.d), z_stretched, z)
-        else:
-            rho_stretched = pml_stretch(rho, rho, self.k0, x_dom=self.PML.rho-self.PML.d, x_pml=self.PML.rho)
-            zt_stretched = pml_stretch(z, z, self.k0, x_dom=self.PML.zt-self.PML.d, x_pml=self.PML.zt)
-            zb_stretched = pml_stretch(z, z, self.k0, x_dom=self.PML.zb+self.PML.d, x_pml=self.PML.zb)
-            rho_pml = ufl.conditional(ufl.ge(rho, self.PML.rho-self.PML.d), rho_stretched, rho)
-            z_pml = ufl.conditional(ufl.ge(z, self.PML.zt-self.PML.d), zt_stretched, ufl.conditional(ufl.le(z, self.PML.zb+self.PML.d), zb_stretched, z))
-        pml_coords = ufl.as_vector((rho_pml, z_pml))
-        self.epsr_pml, self.murinv_pml = pml_epsr_murinv(pml_coords, rho)
         
-    def ComputeSolutions(self):
+    def ComputeSolutions(self, computeRef = True, computeDUT = False):
+        '''
+        Computes the solutions
+        
+        :param computeRef: if True, computes the reference case (this is always needed for reconstruction)
+        :param computeDUT: if True, computes the DUT case (needed for simulation-only stuff)
+        '''
         # Set up the excitation - on antenna faces
         def Eport(x):
             """
@@ -223,7 +235,7 @@ class scatt3DProblem():
         a = [dolfinx.fem.Constant(self.refMeshdata.mesh, 1.0 + 0j) for n in range(self.refMeshdata.N_antennas)]
         F_antennas_str = ''
         for n in range(self.refMeshdata.N_antennas):
-            F_antennas_str += f"""+ 1j*k00/Zrel*ufl.inner(ufl.cross(E, nvec), ufl.cross(v, nvec))*ds_antennas[{n}] - 1j*k00/Zrel*2*a[{n}]*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(v, nvec))*ds_antennas[{n}]"""
+            F_antennas_str += f"""+ 1j*k00/Zrel*ufl.inner(ufl.cross(E, nvec), ufl.cross(v, nvec))*self.ds_antennas[{n}] - 1j*k00/Zrel*2*a[{n}]*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(v, nvec))*self.ds_antennas[{n}]"""
         F = ufl.inner(1/self.mur*curl_E, curl_v)*self.dx_dom \
             - ufl.inner(k00**2*self.epsr*E, v)*self.dx_dom \
             + ufl.inner(self.murinv_pml*curl_E, curl_v)*self.dx_pml \
@@ -233,17 +245,20 @@ class scatt3DProblem():
         petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## try looking this up to see if some other options might be better (apparently it is hard to find iterative solvers that converge)
         problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
         
-        def ComputeFields(self):
+        def ComputeFields():
             '''
             Computes the fields
             '''
             S = np.zeros((self.Nf, self.refMeshdata.N_antennas, self.refMeshdata.N_antennas), dtype=complex)
             solutions = []
             for nf in range(self.Nf):
-                print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
-                sys.stdout.flush()
-                k00.value = 2*np.pi*self.fvec[nf]/c0
+                if(self.verbosity > 0):
+                    print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
+                    sys.stdout.flush()
+                k0 = 2*np.pi*self.fvec[nf]/c0
+                k00.value = k0
                 Zrel.value = k00.value/np.sqrt(k00.value**2 - self.refMeshdata.kc**2)
+                self.CalculatePML(k0)  ## update PML to this freq.
                 sols = []
                 for n in range(self.refMeshdata.N_antennas):
                     for m in range(self.refMeshdata.N_antennas):
@@ -270,29 +285,110 @@ class scatt3DProblem():
                 solutions.append(sols)
             return S, solutions
         
-        if(self.verbosity > 0):
-            print(f'Rank {self.comm.rank}: Computing REF solutions')
+        if(computeRef):
+            if(self.verbosity > 0):
+                print(f'Rank {self.comm.rank}: Computing REF solutions')
+            elif(self.comm.rank == self.model_rank):
+                print(f'Computing REF solutions')
             sys.stdout.flush()
-        elif(self.comm.rank == self.model_rank):
-            print(f'Computing REF solutions')
-        self.epsr.x.array[:] = self.epsr_array_ref
-        S_ref, solutions_ref = ComputeFields()
-        if(not self.computeReference):
+                
+            self.epsr.x.array[:] = self.epsr_array_ref
+            self.S_ref, self.solutions_ref = ComputeFields()    
+    
+        if(computeDUT):
             if(self.verbosity > 0):
                 print(f'Rank {self.comm.rank}: Computing DUT solutions')
-                sys.stdout.flush()
             elif(self.comm.rank == self.model_rank):
                 print(f'Computing DUT solutions')
-            
             sys.stdout.flush()
+            
             self.epsr.x.array[:] = self.epsr_array_dut
-            S_dut, solutions_dut = ComputeFields()
+            self.S_dut, self.solutions_dut = ComputeFields()
+            
+    def makeOptVectors(self):
+        '''
+        Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh
+        '''
         
-        print(f'Rank {self.comm.rank}: Computing optimization vectors')
-        sys.stdout.flush()
+        if(self.verbosity > 0):
+            print(f'Rank {self.comm.rank}: Computing optimization vectors')
+            sys.stdout.flush()
+        elif(self.comm.rank == self.model_rank):
+            print(f'Computing optimization vectors')
         
         
+        # Create function space for temporary interpolation
+        q = dolfinx.fem.Function(self.Wspace)
+        bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
+        cell_volumes = dolfinx.fem.assemble_vector(dolfinx.fem.form(ufl.conj(ufl.TestFunction(self.Wspace))*ufl.dx)).array
+        def q_func(x, Em, En, k0):
+            '''
+            Calculates the 'optimization vector' at each position in the reference mesh. Since the DUT mesh is different,
+            this requires interpolation to find the E-fields at each point
+            :param x: positions/points
+            :param Em: first E-field
+            :param En: second E-field
+            :param k0: wavenumber at this frequency
+            '''
+            cells = []
+            cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
+            colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
+            for i, point in enumerate(x.T):
+                if len(colliding_cells.links(i)) > 0:
+                    cells.append(colliding_cells.links(i)[0])
+            Em_vals = Em.eval(x.T, cells)
+            En_vals = En.eval(x.T, cells)
+            values = -1j*k0/eta0/2*(Em_vals[:,0]*En_vals[:,0] + Em_vals[:,1]*En_vals[:,1] + Em_vals[:,2]*En_vals[:,2])*cell_volumes
+            return values
         
+        xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'output-qs.xdmf', file_mode='w')
+        xdmf.write_mesh(self.refMeshdata.mesh)
+        self.epsr.x.array[:] = cell_volumes
+        xdmf.write_function(self.epsr, -3)
+        self.epsr.x.array[:] = self.epsr_array_ref
+        xdmf.write_function(self.epsr, -2)
+        self.epsr.x.array[:] = self.epsr_array_dut
+        xdmf.write_function(self.epsr, -1)
+        for nf in range(self.Nf):
+            print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
+            sys.stdout.flush()
+            k0 = 2*np.pi*self.fvec[nf]/c0
+            for m in range(self.refMeshdata.N_antennas):
+                Em_ref = self.solutions_ref[nf][m]
+                for n in range(self.refMeshdata.N_antennas):
+                    if(self.ErefEdut): ## only using Eref*Eref right now. This should provide a superior reconstruction with fully simulated data, though
+                        En = self.solutions_dut[nf][n] 
+                    else:
+                        En = self.solutions_ref[nf][n]
+                    q.interpolate(functools.partial(q_func, Em=Em_ref, En=En, k0=k0))
+                    # The function q is one row in the A-matrix, save it to file
+                    xdmf.write_function(q, nf*self.refMeshdata.N_antennas*self.refMeshdata.N_antennas + m*self.refMeshdata.N_antennas + n)
+        xdmf.close()
+    
+    def saveEFieldsForAnim(self, Nframes = 50):
+        '''
+        Saves the E-fields for the final solution into .xdmf, for a number of different phase factors to create an animation in paraview
+        Uses the reference mesh and fields.
+        '''
+        xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimation.xdmf', file_mode='w')
+        xdmf2.write_mesh(self.refMeshdata.mesh)
+        ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
+        q = dolfinx.fem.Function(self.Wspace)
+        bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
+        def q_abs(x, E): ## similar to the one in makeOptVectors
+            cells = []
+            cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
+            colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
+            for i, point in enumerate(x.T):
+                if len(colliding_cells.links(i)) > 0:
+                    cells.append(colliding_cells.links(i)[0])
+            E_vals = E.eval(x.T, cells)
+            values = np.sqrt((E_vals[:,0]*E_vals[:,0] + E_vals[:,1]*E_vals[:,1] + E_vals[:,2]*E_vals[:,2]))
+            return values
+        q.interpolate(functools.partial(q_abs, E=self.solutions_ref[0][0])) ## fields for the first frequency and antenna
         
-        
-        
+        for i in range(Nframes):
+            self.epsr.x.array[:] = q*np.exp(1j*i*2*pi/Nframes) 
+            xdmf2.write_function(q, i)
+        xdmf2.close()
+    

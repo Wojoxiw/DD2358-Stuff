@@ -1,4 +1,4 @@
-from Scatt3D import memTimeEstimation
+from scripts import memTimeEstimation
 import pytest
 import numpy as np
 import sys, petsc4py

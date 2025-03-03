@@ -23,7 +23,7 @@ cd $SNIC_TMP ## go to that directory
 
 #time python Scatt3D.py ### then run it... and time it
 export MPInum=4 ## number of MPI processes
-time mpirun -n $MPInum python Scatt3D.py $MPInum ## run the main process, and time it
+time mpirun -n $MPInum python runScatt3D.py $MPInum ## run the main process, and time it
 
 cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to whatever directory you were in when using sbatch jobscript.sh
 cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also
