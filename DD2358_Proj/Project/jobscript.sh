@@ -21,7 +21,7 @@ cp -p runScatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execut
 cp -p meshMaker.py $SNIC_TMP
 cp -p memTimeEstimation.py $SNIC_TMP
 cp -p scatteringProblem.py $SNIC_TMP
-#cp -p data3D/prevRuns.npz $SNIC_TMP
+cp -p data3D/prevRuns.npz $SNIC_TMP"data3D/"
 cd $SNIC_TMP ## go to that directory
 
 #time python Scatt3D.py ### then run it... and time it
