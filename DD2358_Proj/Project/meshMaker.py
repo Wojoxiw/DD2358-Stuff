@@ -1,6 +1,8 @@
 # encoding: utf-8
 ## this file makes the mesh
 
+import os ## presumably dont need this import here
+os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx
@@ -18,7 +20,7 @@ class MeshData():
                  f0 = 10e9,
                  verbosity = 0,
                  model_rank = 0,
-                 h = 1/15,
+                 h = 1/13,
                  domain_geom = 'domedCyl', 
                  object_geom = 'sphere',
                  defect_geom = 'cylinder',
@@ -29,7 +31,7 @@ class MeshData():
                  antenna_width = 0.7625, 
                  antenna_height = 0.3625,
                  antenna_depth = 1/10,      
-                 N_antennas = 5,
+                 N_antennas = 3,
                  antenna_radius = 0,
                  antenna_z_offset = 0,
                  object_radius = 0.46,
@@ -259,6 +261,6 @@ class MeshData():
         self.meshingTime = timer() - t1 ## Time it took to make the mesh. Given to mem-time estimator
         if(self.verbosity > 0 and self.comm.rank == self.model_rank): ## start by giving some estimated calculation times/memory costs
             nloc = self.mesh.topology.index_map(self.mesh.topology.dim).size_local
-            print(f'Mesh generated in {self.meshingTime:.3e} s - {self.ncells} global cells {nloc}, local cells')
+            print(f'Mesh generated in {self.meshingTime:.2e} s - {self.ncells} global cells {nloc}, local cells')
             sys.stdout.flush()
             

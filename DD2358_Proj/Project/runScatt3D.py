@@ -28,7 +28,7 @@ from timeit import default_timer as timer
 import sys
 import meshMaker
 import scatteringProblem
-from scripts import memTimeEstimation
+import memTimeEstimation
 
 
 
@@ -37,56 +37,43 @@ if __name__ == '__main__':
     # MPI settings
     comm = MPI.COMM_WORLD
     model_rank = 0
-    args = sys.argv[1:] ## can take the number of MPI processes as an argument. If not given, just say 0. Current not used anywhere.
-    if(len(args) == 0):
-        MPInum = 1
-    else:
-        MPInum = int(args[0]) ## This is apparently a sequence that needs to be converted to int so I can multiply it...
+    verbosity = 1
+    MPInum = comm.size
     
     runName = 'test' # testing
     folder = 'data3D/'
     
-    print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
-      
-    
+    print(f"{comm.rank=} {comm.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
     if(comm.rank == model_rank):
         print('Expected number of MPI processes:', MPInum)
         print('Scatt3D start:')
     sys.stdout.flush()
+    
+    
+    def profilingMemsTimes(): ## as used to make plots for the report
         
-      
-    
-    #memTimeEstimation(printPlots = True)
-    
-    
-    def testRun(runName, viewGMSH = False, verbosity = 1, Nf=1):
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = viewGMSH, verbosity = verbosity)
+        ## when using MPI for speedup:
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'initProfilingMPI.npz')
         
-        estmem, esttime = memTimeEstimation(refMesh.ncells, Nf)
-        print(f'Estimated memory requirement for size {refMesh.ncells:.3e}: {estmem:.2f} GB')
-        print(f'Estimated computation time for size {refMesh.ncells:.3e}, Nf = {Nf}: {esttime/3600:.2f} hours')
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity)
+        numRuns = 10 ## run these 10 times to find averages/stds
+        hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
+        for i in range(numRuns):
+            for h in hs:
+                refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h)
+                prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
+                prevRuns.memTimeAppend(prob)
+            
+    def testRun():
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm)
+        #prevRuns.makePlots()
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
         prob.saveEFieldsForAnim()
     
-    b = memory_usage((testRun, (runName,), {'viewGMSH' : False}), max_usage = True)
-    print(b)
-    mem_usage = MPInum * b
-    
-    print('Max. memory:',mem_usage/1000,'GiB'+f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
-    #if(comm.rank == model_rank):
-        #memTimeAppend(size, Nf, mem_usage/1000, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
-        
+        prevRuns.memTimeAppend(prob)
     
     
-    #===========================================================================
-    # ## Possible to mpirun from script, but difficult to then cancel processes - seems unsuitable
-    # N = 3
-    # child=MPI.COMM_SELF.Spawn(sys.executable,args=['Scatt3D.py'],maxprocs=N) ## will run it like mpirun -n N Scatt3D.py, I think
-    #===========================================================================
+    testRun()
     
-    #mem_usage = memory_usage(subprocess.run(command, stdout=subprocess.PIPE), max_usage=True)
-    #print(mem_usage)
-    #print('Max. memory:',mem_usage/1000,'GiB')
-    #memTimeAppend(size, Nf, mem_usage/1000, totT, reference=False) ## '0' memory cost to ignore this one (or later fill in manually) - not sure how to easily estimate this without slowing the code
-      
+    profilingMemsTimes()
     
