@@ -17,8 +17,11 @@ echo "jobscript listed above, date listed below..."
 date ## prints current date/time
 
 mamba activate Scatt3D ## the mamba env
-cp -p Scatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory. I first update it with git pull origin master
-cp -p prevRuns.info $SNIC_TMP
+cp -p runScatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory. I first update it with git pull origin master
+cp -p meshMaker.py $SNIC_TMP
+cp -p memTimeEstimation.py $SNIC_TMP
+cp -p scatteringProblem.py $SNIC_TMP
+#cp -p data3D/prevRuns.npz $SNIC_TMP
 cd $SNIC_TMP ## go to that directory
 
 #time python Scatt3D.py ### then run it... and time it
