@@ -4,7 +4,7 @@
 #SBATCH -A lu2024-2-93 ##from projinfo command
 
 #SBATCH -N 1 ##number of nodes that will be allocated - must use --ntasks-per-node or --cpus-per-task to use more than 1 core per node
-#SBATCH --tasks-per-node=32 ##number of cores used per task? - up to 48 per node for COSMOS. Presumably this is what I want, using MPI
+#SBATCH --tasks-per-node=24 ##number of cores used per task? - up to 48 per node for COSMOS. Presumably this is what I want, using MPI
 
 #SBATCH -o jobresults/%j_result.out ## result filename, %j becomes the job number
 #SBATCH -e jobresults/%j_result.err ## errors filename - should be empty unless an error occurs
@@ -22,7 +22,7 @@ cp -p prevRuns.info $SNIC_TMP
 cd $SNIC_TMP ## go to that directory
 
 #time python Scatt3D.py ### then run it... and time it
-export MPInum=32 ## number of MPI processes
+export MPInum=24 ## number of MPI processes
 time mpirun -n $MPInum python runScatt3D.py ## run the main process, and time it
 
 cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to whatever directory you were in when using sbatch jobscript.sh
