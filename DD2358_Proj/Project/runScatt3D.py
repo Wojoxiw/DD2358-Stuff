@@ -53,7 +53,7 @@ if __name__ == '__main__':
     def profilingMemsTimes(): ## as used to make plots for the report
         
         ## when using MPI for speedup:
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'initProfilingMPI.prev')
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRuns.prev')
         
         numRuns = 10 ## run these 10 times to find averages/stds
         hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes

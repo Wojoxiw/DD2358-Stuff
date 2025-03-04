@@ -131,7 +131,7 @@ class runTimesMems():
         
     def makePlotsSTD(self, binVals):
         '''
-        Makes plots with standard deviation error bars for specific values (for DD2358).
+        Makes plots with standard deviation error bars for specific values (for DD2358). These are specific sizes, and MPInums
         Does its own version of calcStats, and makes plots herein
         :param binVals: the size-values (# elements) that were used for calculations 
         '''
