@@ -16,13 +16,15 @@ echo \n"hello from $HOSTNAME:" $HOSTNAME ## some unix script
 echo "jobscript listed above, date listed below..."
 date ## prints current date/time
 
-mamba activate Scatt3D ## the mamba env
 cp -p runScatt3D.py $SNIC_TMP ## reads this file into the node-local disk/execution directory. I first update it with git pull origin master
 cp -p meshMaker.py $SNIC_TMP
 cp -p memTimeEstimation.py $SNIC_TMP
 cp -p scatteringProblem.py $SNIC_TMP
-cp -p data3D/prevRuns.prev $SNIC_TMP"data3D/"
-cd $SNIC_TMP ## go to that directory
+cd $SNIC_TMP ## go to that directory to make the data 3D folder so I can move stuff there... then go back to move stuff
+mkdir data3D
+cd $SLURM_SUBMIT_DIR
+cp -p data3D/prevRuns.prev $SNIC_TMP"/data3D"
+cd $SNIC_TMP ## go to that directory to run the script
 
 #time python Scatt3D.py ### then run it... and time it
 export MPInum=24 ## number of MPI processes

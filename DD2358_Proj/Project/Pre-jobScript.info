@@ -23,14 +23,15 @@ mamba install fenics-dolfinx mpich petsc=*=complex*
 mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler numpy
 pip install imageio[ffmpeg]
 
-Then sync output folder with my local output folder, so I have the files locally... by running the following script locally, afterward
-
-rsync -ar --info=progress2 alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/scatt3DTesting/DD2358-Stuff/DD2358_Proj/Project/data3D/ "/mnt/d/Microwave Imaging/repository/DD2358_Proj/Project/data3DLUNARC"
-rsync -ar --info=progress2 alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/scatt3DTesting/DD2358-Stuff/DD2358_Proj/Project/prevRuns.info "/mnt/d/Microwave Imaging/repository/DD2358_Proj/Project/prevRuns.info"
+Once stuff is installed, must make sure mamba is activated before running jobscript:
 
 To run the jobscript:
 sbatch jobscript.sh
 
+Then sync output folder with my local output folder, so I have the files locally... by running the following script locally, afterward
+
+rsync -ar --info=progress2 alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/scatt3DTesting/DD2358-Stuff/DD2358_Proj/Project/data3D/ "/mnt/d/Microwave Imaging/repository/DD2358_Proj/Project/data3DLUNARC"
+rsync -ar --info=progress2 alepal@cosmos.lunarc.lu.se:/home/alepal/Alexandros/scatt3DTesting/DD2358-Stuff/DD2358_Proj/Project/prevRuns.info "/mnt/d/Microwave Imaging/repository/DD2358_Proj/Project/prevRuns.info"
 
 Some info:
 ## login with ssh cosmos.lunarc.lu.se -l alepal
