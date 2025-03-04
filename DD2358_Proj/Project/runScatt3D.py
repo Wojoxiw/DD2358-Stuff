@@ -73,7 +73,7 @@ if __name__ == '__main__':
         prevRuns.memTimeAppend(prob)
     
     
-    testRun()
+    #testRun()
     
     profilingMemsTimes()
     
