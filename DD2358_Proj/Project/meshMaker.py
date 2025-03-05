@@ -261,6 +261,6 @@ class MeshData():
         self.meshingTime = timer() - t1 ## Time it took to make the mesh. Given to mem-time estimator
         if(self.verbosity > 0 and self.comm.rank == self.model_rank): ## start by giving some estimated calculation times/memory costs
             nloc = self.mesh.topology.index_map(self.mesh.topology.dim).size_local
-            print(f'Mesh generated in {self.meshingTime:.2e} s - {self.ncells} global cells {nloc}, local cells')
+            print(f'Mesh generated in {self.meshingTime:.2e} s - {self.ncells} global cells, {nloc} local cells')
             sys.stdout.flush()
             

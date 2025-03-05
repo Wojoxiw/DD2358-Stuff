@@ -129,46 +129,42 @@ class runTimesMems():
             plt.tight_layout()
             plt.show()
         
-    def makePlotsSTD(self, binVals):
+    def makePlotsSTD(self):
         '''
         Makes plots with standard deviation error bars for specific values (for DD2358). These are specific sizes, and MPInums
         Does its own version of calcStats, and makes plots herein
-        :param binVals: the size-values (# elements) that were used for calculations 
         '''
+        binVals = [109624] ## the size-values (# elements) that were used for calculations
+        MPInums = [0, 12, 24] ## MPInum of runs to plot
+        
         if(self.comm.rank == 0):
             numRuns = len(self.prevRuns) 
             
-            for binVal in binVals:
-                ## first count the runs in this bin
-                l = 0
-                for i in range(numRuns):
-                    run = self.prevRuns[i]
-                    if(np.isclose(run.size, binVal)):
-                        l+=1
-                ## then make the arrays
-                self.sizes = np.zeros(l)
-                self.mems = np.zeros(l)
-                self.times = np.zeros(l)
-                self.numProcesses = np.zeros(l)
-                self.Nfs = np.zeros(l)
-                self.Nants = np.zeros(l)
-                l = 0
-                for i in range(numRuns):
-                    run = self.prevRuns[i]
-                    if(np.isclose(run.size, binVal)):
-                        self.sizes[i] = run.size
-                        self.mems[i] = run.mem
-                        self.times[i] = run.meshingTime + run.calcTime
-                        self.numProcesses[i] = run.MPInum
-                        self.Nfs[i] = run.Nf
-                        self.Nants[i] = run.Nants
-                        l+=1
-            
-            ## do some curve fitting, assuming some semi-arbitrary dependencies
-            xdata = np.vstack((self.sizes, self.numProcesses, self.Nfs, self.Nants))
-            ## Assume computations time scales by problem size, Nfs, and Nants**2, and maybe 1/MPInum
-            self.timeFit = scipy.optimize.curve_fit(self.fitLine, xdata, self.times)[0]
-            ## Assume memory cost scales just by problem size
-            self.memFit = scipy.optimize.curve_fit(self.fitLine, xdata, self.mems)[0]
+            for MPInum in MPInums:
+                for binVal in binVals:
+                    ## first count the runs in this bin
+                    l = 0
+                    for i in range(numRuns):
+                        run = self.prevRuns[i]
+                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum): ## if correct size and MPInum, count
+                            l+=1
+                    ## then make the arrays
+                    sizes = np.zeros(l)
+                    mems = np.zeros(l)
+                    times = np.zeros(l)
+                    numProcesses = np.zeros(l)
+                    Nfs = np.zeros(l)
+                    Nants = np.zeros(l)
+                    l = 0
+                    for i in range(numRuns):
+                        run = self.prevRuns[i]
+                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum): ## if correct size and MPInum, fill in the array vals
+                            sizes[i] = run.size
+                            mems[i] = run.mem
+                            times[i] = run.meshingTime + run.calcTime
+                            numProcesses[i] = run.MPInum
+                            Nfs[i] = run.Nf
+                            Nants[i] = run.Nants
+                            l+=1
             
             #plt.errorbar(x, y, yerr, linewdith = 2, capsize = 6)

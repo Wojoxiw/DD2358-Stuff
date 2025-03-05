@@ -106,7 +106,7 @@ class Scatt3DProblem():
         self.makeOptVectors(mesh)
         self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
         
-        if(self.verbosity > 0):
+        if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
             print(f'Max. memory: {mem_usage:.3f} GiB -- '+f"{self.comm.rank=} {self.comm.size=}")
         mems = self.comm.gather(mem_usage, root=self.model_rank)
         if (self.comm.rank == self.model_rank):
@@ -274,7 +274,7 @@ class Scatt3DProblem():
             S = np.zeros((self.Nf, mesh.N_antennas, mesh.N_antennas), dtype=complex)
             solutions = []
             for nf in range(self.Nf):
-                if(self.verbosity > 0):
+                if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
                     print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                     sys.stdout.flush()
                 k0 = 2*np.pi*self.fvec[nf]/c0
@@ -308,19 +308,15 @@ class Scatt3DProblem():
             return S, solutions
         
         if(computeRef):
-            if(self.verbosity > 0):
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
                 print(f'Rank {self.comm.rank}: Computing REF solutions')
-            elif(self.comm.rank == self.model_rank):
-                print(f'Computing REF solutions')
             sys.stdout.flush()
                 
             self.epsr.x.array[:] = self.epsr_array_ref
             self.S_ref, self.solutions_ref = ComputeFields()    
         else:
-            if(self.verbosity > 0):
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
                 print(f'Rank {self.comm.rank}: Computing DUT solutions')
-            elif(self.comm.rank == self.model_rank):
-                print(f'Computing DUT solutions')
             sys.stdout.flush()
             
             self.epsr.x.array[:] = self.epsr_array_dut
@@ -331,11 +327,9 @@ class Scatt3DProblem():
         Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh
         '''
         
-        if(self.verbosity > 0):
+        if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
             print(f'Rank {self.comm.rank}: Computing optimization vectors')
             sys.stdout.flush()
-        elif(self.comm.rank == self.model_rank):
-            print(f'Computing optimization vectors')
         
         
         # Create function space for temporary interpolation
