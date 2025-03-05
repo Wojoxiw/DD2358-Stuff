@@ -15,7 +15,7 @@ class runTimesMems():
     Only the master (rank 0) process's times are saved - there shouldn't be much of a difference between processes, though.
     Only the total memory taken is saved - should be about equally spread between the processes.
     '''
-    def __init__(self, folder, comm, filename = 'prevRuns.prev', otherPrevs = []):
+    def __init__(self, folder, comm, filename = 'prevRuns.npz', otherPrevs = []):
         '''
         'Create' it every time - if it already exists, load the data. If not, we start empty
         :param folder: Folder where it is saved

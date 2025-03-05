@@ -32,4 +32,3 @@ time mpirun -n $MPInum python runScatt3D.py ## run the main process, and time it
 
 # cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to whatever directory you were in when using sbatch jobscript.sh
 cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also
-#rsync -ar data3D/ $SLURM_SUBMIT_DIR/data3D ## instead of the above, sync all files back (not sure if this is really different) so as to avoid deleting files
