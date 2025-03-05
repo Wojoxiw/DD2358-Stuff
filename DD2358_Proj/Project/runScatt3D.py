@@ -58,9 +58,10 @@ if __name__ == '__main__':
         numRuns = 1 ## run these 10 times to find averages/stds
         hs = [1/10]#[1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
         for i in range(numRuns):
-            print('############')
-            print(f'  RUN {i+1}/{numRuns} ')
-            print('############')
+            if(comm.rank == model_rank):
+                print('############')
+                print(f'  RUN {i+1}/{numRuns} ')
+                print('############')
             for h in hs:
                 refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h)
                 prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
