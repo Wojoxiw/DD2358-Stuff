@@ -394,20 +394,27 @@ class Scatt3DProblem():
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
         E = dolfinx.fem.Function(self.Wspace)
         bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
-        def q_abs(x, E): ## similar to the one in makeOptVectors
-            cells = []
-            cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
-            colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
-            for i, point in enumerate(x.T):
-                if len(colliding_cells.links(i)) > 0:
-                    cells.append(colliding_cells.links(i)[0])
-            E_vals = E.eval(x.T, cells)
-            values = np.sqrt((E_vals[:,0]*E_vals[:,0] + E_vals[:,1]*E_vals[:,1] + E_vals[:,2]*E_vals[:,2]))
-            return values
-        E.interpolate(functools.partial(q_abs, E=self.solutions_ref[0][0])) ## fields for the first frequency and antenna
-        xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimation.xdmf', file_mode='w')
-        xdmf2.write_mesh(self.refMeshdata.mesh)
-        for i in range(Nframes):
-            E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
-            xdmf2.write_function(E, i)
-        xdmf2.close()
+        for pol in ['x', 'y', 'z']: ## save each pol in a different file
+            def q_abs(x, E): ## similar to the one in makeOptVectors
+                cells = []
+                cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
+                colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
+                for i, point in enumerate(x.T):
+                    if len(colliding_cells.links(i)) > 0:
+                        cells.append(colliding_cells.links(i)[0])
+                E_vals = E.eval(x.T, cells)
+                #values = np.sqrt((E_vals[:,0]*E_vals[:,0] + E_vals[:,1]*E_vals[:,1] + E_vals[:,2]*E_vals[:,2]))
+                if(pol == 'z'): ## save z-pol
+                    values = E_vals[:,2] ## this should be the z-component...
+                elif(pol == 'x'): ## save z-pol
+                    values = E_vals[:,0] ## this should be the x-component...
+                elif(pol == 'y'): ## save z-pol
+                    values = E_vals[:,1] ## this should be the y-component...
+                return values
+            E.interpolate(functools.partial(q_abs, E=self.solutions_ref[0][0])) ## fields for the first frequency and antenna
+            xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
+            xdmf2.write_mesh(self.refMeshdata.mesh)
+            for i in range(Nframes):
+                E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
+                xdmf2.write_function(E, i)
+            xdmf2.close()

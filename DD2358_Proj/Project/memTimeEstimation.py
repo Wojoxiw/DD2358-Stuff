@@ -170,3 +170,5 @@ class runTimesMems():
             self.timeFit = scipy.optimize.curve_fit(self.fitLine, xdata, self.times)[0]
             ## Assume memory cost scales just by problem size
             self.memFit = scipy.optimize.curve_fit(self.fitLine, xdata, self.mems)[0]
+            
+            #plt.errorbar(x, y, yerr, linewdith = 2, capsize = 6)

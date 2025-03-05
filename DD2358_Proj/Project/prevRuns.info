@@ -1,5 +1,5 @@
 ### Approximate Memory Requirement [GiB] // Total Computation Time [s] // Number of mesh cells // Number of frequencies // Reference (1 if reference run, 0 if not)
-# Computation times cannot be trusted (depends on # of cores, if run is reference or not, etc.) Hopefully, memory requirements are more consistent. Keep an empty line at bottom.
+# Computation times cannot be trusted (depends on # of cores, if run is reference or not, etc.) Hopefully, memory requirements are more consistent. Keep an empty line at bottom. This is now deprecated.
 5.56389e+00 1.11830e+02 2.02227e+05 1.00000e+00 0.00000e+00
 5.27730e+00 1.52544e+02 2.02227e+05 1.00000e+00 0.00000e+00
 5.64450e+00 1.18665e+02 2.02227e+05 1.00000e+00 0.00000e+00
