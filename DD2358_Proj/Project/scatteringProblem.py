@@ -365,8 +365,9 @@ class Scatt3DProblem():
         self.epsr.x.array[:] = self.epsr_array_dut
         xdmf.write_function(self.epsr, -1)
         for nf in range(self.Nf):
-            print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
-            sys.stdout.flush()
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
+                print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
+                sys.stdout.flush()
             k0 = 2*np.pi*self.fvec[nf]/c0
             for m in range(mesh.N_antennas):
                 Em_ref = self.solutions_ref[nf][m]

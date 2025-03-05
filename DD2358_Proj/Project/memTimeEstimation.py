@@ -15,11 +15,13 @@ class runTimesMems():
     Only the master (rank 0) process's times are saved - there shouldn't be much of a difference between processes, though.
     Only the total memory taken is saved - should be about equally spread between the processes.
     '''
-    def __init__(self, folder, comm, filename = 'prevRuns.prev'):
+    def __init__(self, folder, comm, filename = 'prevRuns.prev', otherPrevs = []):
         '''
         'Create' it every time - if it already exists, load the data. If not, we start empty
         :param folder: Folder where it is saved
         :param comm: MPI communicator
+        :param filename: Filename to load/save this to
+        :param otherPrevs: List of other filenames to load in - these should be in the same folder
         '''
         self.comm = comm
         self.fpath = folder+filename
@@ -27,7 +29,14 @@ class runTimesMems():
             self.prevRuns = np.load(self.fpath, allow_pickle=True)['prevRuns']
             if(self.comm.rank == 0):
                 print(f'Loaded previous run data from {len(self.prevRuns)} runs')
-            
+                
+        if(len(otherPrevs) > 0): ## if there are other previous runs to load
+            for other in otherPrevs:
+                runs = np.load(folder+other, allow_pickle=True)['prevRuns']
+                if(not hasattr(self, 'prevRuns')): ## if no other prev runs
+                    self.prevRuns = runs
+                else:
+                    self.prevRuns = self.prevRuns + runs
         #np.savez(self.fpath, prevRuns = self)
         
     class runTimeMem():
@@ -134,14 +143,29 @@ class runTimesMems():
         Makes plots with standard deviation error bars for specific values (for DD2358). These are specific sizes, and MPInums
         Does its own version of calcStats, and makes plots herein
         '''
-        binVals = [109624] ## the size-values (# elements) that were used for calculations
+        binVals = [109624, 143465, 189130, 233557, 290155, 355864, 430880, 512558, 609766, 707748, 825148] ## the size-values (# elements) that were used for calculations
         MPInums = [0, 12, 24] ## MPInum of runs to plot
         
         if(self.comm.rank == 0):
-            numRuns = len(self.prevRuns) 
+            numRuns = len(self.prevRuns)
+            fig1 = plt.figure(figsize = (12,9))
+            ax1 = plt.subplot(1, 1, 1)
+            fig2 = plt.figure(figsize = (12,9))
+            ax2 = plt.subplot(1, 1, 1)
+            ax1.grid(True)
+            ax2.grid(True)
+            ax1.set_title('Computation Time by Problem Size')
+            ax2.set_title('Memory Cost by Problem Size')
+            ax1.set_xlabel('# FEM Elements')
+            ax2.set_xlabel('# FEM Elements')
+            ax1.set_ylabel('Time [hours]')
+            ax2.set_ylabel('Memory [GiB]')
             
             for MPInum in MPInums:
-                for binVal in binVals:
+                avgstdTimes = np.zeros((2, len(binVals))) ## array of average and standard-deviations of computation times
+                avgstdMems = np.zeros((2, len(binVals))) ## array of average and standard-deviations of memory costs
+                for j in range(len(binVals)):
+                    binVal = binVals[j]
                     ## first count the runs in this bin
                     l = 0
                     for i in range(numRuns):
@@ -159,12 +183,23 @@ class runTimesMems():
                     for i in range(numRuns):
                         run = self.prevRuns[i]
                         if(np.isclose(run.size, binVal) and run.MPInum == MPInum): ## if correct size and MPInum, fill in the array vals
-                            sizes[i] = run.size
-                            mems[i] = run.mem
-                            times[i] = run.meshingTime + run.calcTime
-                            numProcesses[i] = run.MPInum
-                            Nfs[i] = run.Nf
-                            Nants[i] = run.Nants
+                            sizes[l] = run.size
+                            mems[l] = run.mem
+                            times[l] = run.meshingTime + run.calcTime
+                            numProcesses[l] = run.MPInum
+                            Nfs[l] = run.Nf
+                            Nants[l] = run.Nants
                             l+=1
+                    avgstdTimes[0, j] = np.mean(times)
+                    avgstdTimes[1, j] = np.std(times)
+                    avgstdMems[0, j] = np.mean(mems)
+                    avgstdMems[1, j] = np.std(mems)
+                    
+                ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewdith = 2, capsize = 6, label = f'{MPInum} Processes')
+                ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewdith = 2, capsize = 6, label = f'{MPInum} Processes')
+                
             
-            #plt.errorbar(x, y, yerr, linewdith = 2, capsize = 6)
+            ax1.legend()
+            ax2.legend()
+            fig1.tight_layout()
+            fig2.tight_layout()
