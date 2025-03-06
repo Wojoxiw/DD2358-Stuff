@@ -11,7 +11,7 @@ import os
     
 class runTimesMems():
     '''
-    Stores data about the previous runtimes, to be saved/loaded with numpy. This holds them like a list, and has some utility functions.
+    Stores data about the previous runtimes, to be saved/loaded with numpy. This holds them in a numpy array, and has some utility functions.
     Only the master (rank 0) process's times are saved - there shouldn't be much of a difference between processes, though.
     Only the total memory taken is saved - should be about equally spread between the processes.
     '''
@@ -24,20 +24,21 @@ class runTimesMems():
         :param otherPrevs: List of other filenames to load in - these should be in the same folder
         '''
         self.comm = comm
-        self.fpath = folder+filename
-        if os.path.isfile(self.fpath):
-            self.prevRuns = np.load(self.fpath, allow_pickle=True)['prevRuns']
-            if(self.comm.rank == 0):
-                print(f'Loaded previous run data from {len(self.prevRuns)} runs')
-                
-        if(len(otherPrevs) > 0): ## if there are other previous runs to load
-            for other in otherPrevs:
-                runs = np.load(folder+other, allow_pickle=True)['prevRuns']
-                if(not hasattr(self, 'prevRuns')): ## if no other prev runs
-                    self.prevRuns = runs
-                else:
-                    self.prevRuns = self.prevRuns + runs
-        #np.savez(self.fpath, prevRuns = self)
+        if(self.comm.rank == 0):
+            self.fpath = folder+filename
+            if os.path.isfile(self.fpath):
+                self.prevRuns = np.load(self.fpath, allow_pickle=True)['prevRuns']
+                if(self.comm.rank == 0):
+                    print(f'Loaded previous run data from {len(self.prevRuns)} runs')
+                    
+            if(len(otherPrevs) > 0): ## if there are other previous runs to load
+                for other in otherPrevs:
+                    runs = np.load(folder+other, allow_pickle=True)['prevRuns']
+                    if(not hasattr(self, 'prevRuns')): ## if no other prev runs
+                        self.prevRuns = runs
+                    else:
+                        self.prevRuns = np.hstack((self.prevRuns, runs))
+            np.savez(self.fpath, prevRuns = self.prevRuns) ## after loading, save them all together
         
     class runTimeMem():
         '''
@@ -63,16 +64,12 @@ class runTimesMems():
         :param run: The run
         '''
         if(self.comm.rank == 0): ## only use the master rank
-            prev = self.runTimeMem(run) ## the runTimeMem
+            prev = np.empty(1, dtype=object)
+            prev[0] = self.runTimeMem(run) ## the runTimeMem, in a numpy array
             if(hasattr(self, 'prevRuns')): ## check if these exist
-                n = len(self.prevRuns)
-                prevs = np.empty(n+1, dtype=object)
-                for i in range(n):
-                    prevs[i] = self.prevRuns[i]
-                prevs[n] = prev    
-                self.prevRuns = prevs
+                self.prevRuns = np.hstack((self.prevRuns, prev))
             else: ## hasn't been made yet
-                self.prevRuns = [prev]
+                self.prevRuns = prev
                 
                 
             np.savez(self.fpath, prevRuns = self.prevRuns)
@@ -144,13 +141,13 @@ class runTimesMems():
         Does its own version of calcStats, and makes plots herein
         '''
         binVals = [109624, 143465, 189130, 233557, 290155, 355864, 430880, 512558, 609766, 707748, 825148] ## the size-values (# elements) that were used for calculations
-        MPInums = [0, 12, 24] ## MPInum of runs to plot
+        MPInums = [1, 12, 24] ## MPInum of runs to plot
         
         if(self.comm.rank == 0):
             numRuns = len(self.prevRuns)
-            fig1 = plt.figure(figsize = (12,9))
+            fig1 = plt.figure()
             ax1 = plt.subplot(1, 1, 1)
-            fig2 = plt.figure(figsize = (12,9))
+            fig2 = plt.figure()
             ax2 = plt.subplot(1, 1, 1)
             ax1.grid(True)
             ax2.grid(True)
@@ -158,7 +155,7 @@ class runTimesMems():
             ax2.set_title('Memory Cost by Problem Size')
             ax1.set_xlabel('# FEM Elements')
             ax2.set_xlabel('# FEM Elements')
-            ax1.set_ylabel('Time [hours]')
+            ax1.set_ylabel('Time [s]')
             ax2.set_ylabel('Memory [GiB]')
             
             for MPInum in MPInums:
@@ -195,11 +192,12 @@ class runTimesMems():
                     avgstdMems[0, j] = np.mean(mems)
                     avgstdMems[1, j] = np.std(mems)
                     
-                ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewdith = 2, capsize = 6, label = f'{MPInum} Processes')
-                ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewdith = 2, capsize = 6, label = f'{MPInum} Processes')
+                ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewidth = 2, capsize = 6, label = f'{MPInum} MPI Processes')
+                ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewidth = 2, capsize = 6, label = f'{MPInum} MPI Processes')
                 
             
             ax1.legend()
             ax2.legend()
             fig1.tight_layout()
             fig2.tight_layout()
+            plt.show()

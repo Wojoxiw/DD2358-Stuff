@@ -231,7 +231,7 @@ class MeshData():
             antenna_surface_markers = [gmsh.model.addPhysicalGroup(fdim, [s]) for s in antenna_surface]
             gmsh.model.occ.synchronize()
             gmsh.model.mesh.generate(tdim)
-            gmsh.write(self.fname)
+            #gmsh.write(self.fname) ## Write the mesh to a file. I have never actually looked at this, so I've commented it out
             
             if(viewGMSH):
                 gmsh.fltk.run()

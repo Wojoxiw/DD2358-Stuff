@@ -30,6 +30,15 @@ import meshMaker
 import scatteringProblem
 import memTimeEstimation
 
+#===============================================================================
+# ##line profiling
+# import line_profiler
+# import atexit
+# profile = line_profiler.LineProfiler()
+# atexit.register(profile.print_stats)
+#===============================================================================
+##memory profiling
+from memory_profiler import profile
 
 
 ##MAIN STUFF
@@ -51,10 +60,7 @@ if __name__ == '__main__':
     
     
     def profilingMemsTimes(): ## as used to make plots for the report
-        
-        ## when using MPI for speedup:
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI12.npz')
-        
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI12.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
         numRuns = 10 ## run these 10 times to find averages/stds
         hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
         for i in range(numRuns):
@@ -66,6 +72,10 @@ if __name__ == '__main__':
                 refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h)
                 prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
                 prevRuns.memTimeAppend(prob)
+    @profile
+    def actualProfilerRunning(): # Here I call more things explicitly in order to more easily profile the code in separate methods (profiling activated in the methods themselves also).
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/12) ## this will have around 190000 elements
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
             
     def testRun():
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
@@ -73,11 +83,16 @@ if __name__ == '__main__':
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
         prob.saveEFieldsForAnim()
-    
         prevRuns.memTimeAppend(prob)
     
     
     #testRun()
+    #profilingMemsTimes()
+    actualProfilerRunning()
     
-    profilingMemsTimes()
+    #===========================================================================
+    # otherprevs = []
+    # prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
+    # prevRuns.makePlotsSTD()
+    #===========================================================================
     

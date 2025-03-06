@@ -8,10 +8,10 @@ from petsc4py import PETSc
 @pytest.fixture(autouse=True)
 def get_test_data():
     try1 = [600000, 1] # [num_cells, num_freqs] - small
-    try2 = [1000000, 40] # large
+    try2 = [2000000, 40] # large
     return [try1, try2]
 
-def test_memEst(get_test_data):
+def test_memEst(get_test_data): ## check that memTimeEstimation returns sensible (a.k.a. finite and positive) estimates of time and memory costs
     for data in get_test_data:
         print(data[0], data[1])
         estMem, estTime = memTimeEstimation(data[0], data[1])
@@ -22,7 +22,7 @@ def test_PETScType(get_test_data): ## PETSc check from https://docs.fenicsprojec
     # The time-harmonic Maxwell equation is complex-valued PDE. PETSc
     # must therefore have compiled with complex scalars. This has never been a problem for me.
     if not np.issubdtype(PETSc.ScalarType, np.complexfloating):  # type: ignore
-        print("Demo can only be executed when PETSc using complex scalars.")
+        print("We need PETSc to be using complex scalars.")
         assert False
     else:
         assert True

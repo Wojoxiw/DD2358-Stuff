@@ -2,7 +2,7 @@ import line_profiler
 import atexit
 #profile = line_profiler.LineProfiler()
 #atexit.register(profile.print_stats)
-#from memory_profiler import profile
+from memory_profiler import profile
 
 grid_shape = (640, 640)
 
@@ -21,7 +21,7 @@ def evolve(grid, dt, D=1.0):
             new_grid[i][j] = grid[i][j] + D * (grid_xx + grid_yy) * dt
     return new_grid
 
-#@profile
+@profile
 def run_experiment(num_iterations, profiler = None):
     # Setting up initial conditions 
     xmax, ymax = grid_shape
