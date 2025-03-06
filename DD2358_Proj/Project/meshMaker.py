@@ -15,7 +15,7 @@ class MeshData():
     """Data structure for the mesh (all geometry) and related metadata."""
     def __init__(self,
                  comm,
-                 fname,
+                 fname = '',
                  reference = True,
                  f0 = 10e9,
                  verbosity = 0,
@@ -43,15 +43,15 @@ class MeshData():
         '''
         Makes it - given various inputs
         :param comm: the MPI communicator
-        :param fname: Mesh filename + directory
+        :param fname: Mesh filename + directory. If empty, does not save it (currently does not ever save it)
         :param reference: Does not include any defects in the mesh.
         :param f0: Design frequency - things will be scaled by the corresponding wavelength
         :param h: typical mesh size, in fractions of a wavelength
         :param verbosity: This is passed to gmsh, also if > 0, I print more stuff
         :param model_rank: Rank of the master model - for saving, plotting, etc.
-        :param domain_geom: The geometry of the domain (and PML). Only the default for now
-        :param object_geom: Geometry of the object. Only the default for now
-        :param object_geom: Geometry of the defect. Only the default for now
+        :param domain_geom: The geometry of the domain (and PML).
+        :param object_geom: Geometry of the object
+        :param defect_geom: Geometry of the defect.
         :param domain_radius:
         :param domain_height:
         :param PML_thickness:
@@ -126,6 +126,8 @@ class MeshData():
             self.defect_geom = defect_geom
             self.defect_radius = defect_radius * self.lambda0
             self.defect_height = defect_height * self.lambda0
+        elif(defect_geom == ''):
+            pass ## no defect
         else:
             print('Nonvalid defect geom, exiting...')
             exit()
@@ -182,23 +184,27 @@ class MeshData():
                     gmsh.model.occ.rotate([(tdim, defect1)], 0, 0, 0, 0, 0, 1, self.defect_angles[2])
                     defectDimTags.append((tdim, defect1))
              
-            ## Makes the domain and the PML
-            domain_cyl = gmsh.model.occ.addCylinder(0, 0, -self.domain_height/2, 0, 0, self.domain_height, self.domain_radius)
-            domain = [(tdim, domain_cyl)] # dim, tags
-            pml_cyl = gmsh.model.occ.addCylinder(0, 0, -self.PML_height/2, 0, 0, self.PML_height, self.PML_radius)
-            pml = [(tdim, pml_cyl)] # dim, tags
-            if(self.dome_height>0): ## add a spheroid domed top and bottom with some specified extra height, that passes through the cylindrical 'corner' (to try to avoid waves being parallel to the PML)
-                domain_spheroid = gmsh.model.occ.addSphere(0, 0, 0, self.domain_radius+self.domain_spheroid_extraRadius)
-                gmsh.model.occ.dilate([(tdim, domain_spheroid)], 0, 0, 0, 1, 1, self.domain_a)
-                domain_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -self.domain_height/2-self.dome_height, 0, 0, self.domain_height+self.dome_height*2, self.domain_radius)
-                domed_ceilings = gmsh.model.occ.intersect([(tdim, domain_spheroid)], [(tdim, domain_extraheight_cyl)])
-                domain = gmsh.model.occ.fuse([(tdim, domain_cyl)], domed_ceilings[0])[0] ## [0] to get  dimTags
-                
-                pml_spheroid = gmsh.model.occ.addSphere(0, 0, 0, self.PML_radius+self.PML_spheroid_extraRadius)
-                gmsh.model.occ.dilate([(tdim, pml_spheroid)], 0, 0, 0, 1, 1, self.PML_a)
-                pml_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -self.PML_height/2-self.dome_height, 0, 0, self.PML_height+self.dome_height*2, self.PML_radius)
-                domed_ceilings = gmsh.model.occ.intersect([(tdim, pml_spheroid)], [(tdim, pml_extraheight_cyl)])
-                pml = gmsh.model.occ.fuse([(tdim, pml_cyl)], domed_ceilings[0])[0]
+            ## Make the domain and the PML
+            if(self.domain_geom == 'domedCyl'):
+                domain_cyl = gmsh.model.occ.addCylinder(0, 0, -self.domain_height/2, 0, 0, self.domain_height, self.domain_radius)
+                domain = [(tdim, domain_cyl)] # dim, tags
+                pml_cyl = gmsh.model.occ.addCylinder(0, 0, -self.PML_height/2, 0, 0, self.PML_height, self.PML_radius)
+                pml = [(tdim, pml_cyl)] # dim, tags
+                if(self.dome_height>0): ## add a spheroid domed top and bottom with some specified extra height, that passes through the cylindrical 'corner' (to try to avoid waves being parallel to the PML)
+                    domain_spheroid = gmsh.model.occ.addSphere(0, 0, 0, self.domain_radius+self.domain_spheroid_extraRadius)
+                    gmsh.model.occ.dilate([(tdim, domain_spheroid)], 0, 0, 0, 1, 1, self.domain_a)
+                    domain_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -self.domain_height/2-self.dome_height, 0, 0, self.domain_height+self.dome_height*2, self.domain_radius)
+                    domed_ceilings = gmsh.model.occ.intersect([(tdim, domain_spheroid)], [(tdim, domain_extraheight_cyl)])
+                    domain = gmsh.model.occ.fuse([(tdim, domain_cyl)], domed_ceilings[0])[0] ## [0] to get  dimTags
+                    
+                    pml_spheroid = gmsh.model.occ.addSphere(0, 0, 0, self.PML_radius+self.PML_spheroid_extraRadius)
+                    gmsh.model.occ.dilate([(tdim, pml_spheroid)], 0, 0, 0, 1, 1, self.PML_a)
+                    pml_extraheight_cyl = gmsh.model.occ.addCylinder(0, 0, -self.PML_height/2-self.dome_height, 0, 0, self.PML_height+self.dome_height*2, self.PML_radius)
+                    domed_ceilings = gmsh.model.occ.intersect([(tdim, pml_spheroid)], [(tdim, pml_extraheight_cyl)])
+                    pml = gmsh.model.occ.fuse([(tdim, pml_cyl)], domed_ceilings[0])[0]
+            elif(self.domain_geom == 'sphere'):
+                domain = gmsh.model.occ.addSphere(0, 0, 0, self.domain_radius)
+                pml = gmsh.model.occ.addSphere(0, 0, 0, self.PML_radius)
             
             # Create fragments and dimtags
             outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + antennas_DimTags)

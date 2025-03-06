@@ -23,7 +23,7 @@ cp -p scatteringProblem.py $SNIC_TMP
 cd $SNIC_TMP ## go to that directory to make the data 3D folder so I can move stuff there... then go back to move stuff
 mkdir data3D
 cd $SLURM_SUBMIT_DIR
-cp -p data3D/prevRuns.prev $SNIC_TMP"/data3D"
+cp -p data3D/prevRuns.npz $SNIC_TMP"/data3D"
 cd $SNIC_TMP ## go to that directory to run the script
 
 #time python Scatt3D.py ### then run it... and time it

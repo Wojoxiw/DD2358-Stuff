@@ -1,4 +1,9 @@
+import os
+os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
+from mpi4py import MPI
 from scripts import memTimeEstimation
+import meshMaker
+import scatteringProblem
 import pytest
 import numpy as np
 import sys, petsc4py
@@ -26,6 +31,13 @@ def test_PETScType(get_test_data): ## PETSc check from https://docs.fenicsprojec
         assert False
     else:
         assert True
+        
+def test_FF_SphereScatt(get_test_data): ## run a spherica domain and object, test the far-field scattering from a sphere vs Mie theoretical result
+    comm = MPI.COMM_WORLD
+    MPInum = comm.size
+    verbosity = 1
+    refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, h=1/15, domain_geom='sphere') ## this will have around 190000 elements
+    prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
     
 if __name__ == '__main__':
     args_str = "-v -s"
