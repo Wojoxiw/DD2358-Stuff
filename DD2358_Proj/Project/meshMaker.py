@@ -11,6 +11,9 @@ from scipy.constants import pi, c as c0
 from timeit import default_timer as timer
 import sys
 
+##memory profiling
+from memory_profiler import profile
+
 class MeshData():
     """Data structure for the mesh (all geometry) and related metadata."""
     def __init__(self,
@@ -135,7 +138,7 @@ class MeshData():
         ## Finally, actually make the mesh
         self.createMesh(viewGMSH)
         
-        
+    @profile
     def createMesh(self, viewGMSH):
         t1 = timer()
         tdim = 3 ## Tetrahedra dimensionality - 3D

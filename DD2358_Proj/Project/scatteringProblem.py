@@ -18,6 +18,9 @@ import pyvista
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 eta0 = np.sqrt(mu0/eps0)
 
+##memory profiling
+from memory_profiler import profile
+
 class Scatt3DProblem():
     """Class to hold definitions and functions for simulating scattering or transmission of electromagnetic waves for a rotationally symmetric structure."""
     def __init__(self,
@@ -90,7 +93,7 @@ class Scatt3DProblem():
         # Calculate solutions
         if(computeImmediately):
             self.compute(computeRef)
-        
+    @profile
     def compute(self, computeRef=True):
         t1 = timer()
         if(computeRef):

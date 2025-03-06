@@ -30,16 +30,16 @@ import meshMaker
 import scatteringProblem
 import memTimeEstimation
 
-##line profiling
-import line_profiler
-import atexit
-profile = line_profiler.LineProfiler()
-atexit.register(profile.print_stats)
+#===============================================================================
+# ##line profiling
+# import line_profiler
+# import atexit
+# profile = line_profiler.LineProfiler()
+# atexit.register(profile.print_stats)
+#===============================================================================
 
-#===============================================================================
-# ##memory profiling
-# from memory_profiler import profile
-#===============================================================================
+##memory profiling
+from memory_profiler import profile
 
 
 ##MAIN STUFF
