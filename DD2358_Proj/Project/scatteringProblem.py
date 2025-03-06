@@ -93,7 +93,7 @@ class Scatt3DProblem():
         # Calculate solutions
         if(computeImmediately):
             self.compute(computeRef)
-    @profile
+    
     def compute(self, computeRef=True):
         t1 = timer()
         if(computeRef):
@@ -205,7 +205,7 @@ class Scatt3DProblem():
         pml_coords = ufl.as_vector((x_pml, y_pml, z_pml))
         self.epsr_pml, self.murinv_pml = pml_epsr_murinv(pml_coords)
 
-        
+    @profile
     def ComputeSolutions(self, mesh, computeRef = True):
         '''
         Computes the solutions
