@@ -18,8 +18,16 @@ import pyvista
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 eta0 = np.sqrt(mu0/eps0)
 
-##memory profiling
-from memory_profiler import profile
+##line profiling
+import line_profiler
+import atexit
+profile = line_profiler.LineProfiler()
+atexit.register(profile.print_stats)
+
+#===============================================================================
+# ##memory profiling
+# from memory_profiler import profile
+#===============================================================================
 
 class Scatt3DProblem():
     """Class to hold definitions and functions for simulating scattering or transmission of electromagnetic waves for a rotationally symmetric structure."""
@@ -94,6 +102,7 @@ class Scatt3DProblem():
         if(computeImmediately):
             self.compute(computeRef)
     
+    @profile
     def compute(self, computeRef=True):
         t1 = timer()
         if(computeRef):
@@ -205,7 +214,7 @@ class Scatt3DProblem():
         pml_coords = ufl.as_vector((x_pml, y_pml, z_pml))
         self.epsr_pml, self.murinv_pml = pml_epsr_murinv(pml_coords)
 
-    @profile
+    #@profile
     def ComputeSolutions(self, mesh, computeRef = True):
         '''
         Computes the solutions

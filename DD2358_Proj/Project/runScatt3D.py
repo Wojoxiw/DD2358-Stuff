@@ -38,8 +38,10 @@ import memTimeEstimation
 # atexit.register(profile.print_stats)
 #===============================================================================
 
-##memory profiling
-from memory_profiler import profile
+#===============================================================================
+# ##memory profiling
+# from memory_profiler import profile
+#===============================================================================
 
 
 ##MAIN STUFF

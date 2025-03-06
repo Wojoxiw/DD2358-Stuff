@@ -11,8 +11,18 @@ from scipy.constants import pi, c as c0
 from timeit import default_timer as timer
 import sys
 
-##memory profiling
-from memory_profiler import profile
+#===============================================================================
+# ##line profiling
+# import line_profiler
+# import atexit
+# profile = line_profiler.LineProfiler()
+# atexit.register(profile.print_stats)
+#===============================================================================
+
+#===============================================================================
+# ##memory profiling
+# from memory_profiler import profile
+#===============================================================================
 
 class MeshData():
     """Data structure for the mesh (all geometry) and related metadata."""
