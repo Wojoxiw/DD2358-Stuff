@@ -102,7 +102,7 @@ class Scatt3DProblem():
         if(computeImmediately):
             self.compute(computeRef)
     
-    @profile
+    #@profile
     def compute(self, computeRef=True):
         t1 = timer()
         if(computeRef):
@@ -214,7 +214,7 @@ class Scatt3DProblem():
         pml_coords = ufl.as_vector((x_pml, y_pml, z_pml))
         self.epsr_pml, self.murinv_pml = pml_epsr_murinv(pml_coords)
 
-    #@profile
+    @profile
     def ComputeSolutions(self, mesh, computeRef = True):
         '''
         Computes the solutions
@@ -333,7 +333,7 @@ class Scatt3DProblem():
             
             self.epsr.x.array[:] = self.epsr_array_dut
             self.S_dut, self.solutions_dut = ComputeFields()
-            
+    @profile
     def makeOptVectors(self, mesh):
         '''
         Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh

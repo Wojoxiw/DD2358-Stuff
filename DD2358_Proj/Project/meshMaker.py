@@ -148,7 +148,7 @@ class MeshData():
         ## Finally, actually make the mesh
         self.createMesh(viewGMSH)
         
-    
+    #@profile
     def createMesh(self, viewGMSH):
         t1 = timer()
         tdim = 3 ## Tetrahedra dimensionality - 3D
