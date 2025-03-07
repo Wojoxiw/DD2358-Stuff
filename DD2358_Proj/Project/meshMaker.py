@@ -263,10 +263,11 @@ class MeshData():
                     if inPECSurface[n](CoM):
                         pec_surface.append(boundary[1])
                 for n in range(len(inAntennaSurface)): ## iterate over all of these
-                    if (self.FF_surface and inAntennaSurface[n](CoM)):
+                    if (inAntennaSurface[n](CoM)):
                         antenna_surface.append(boundary[1])
-                if(inFF_surface(CoM)): ## FF surface is just a sphere
-                    farfield_surface.append(boundary[1])
+                if(self.FF_surface):
+                    if(inFF_surface(CoM)): ## FF surface is just a sphere
+                        farfield_surface.append(boundary[1])
             pec_surface_marker = gmsh.model.addPhysicalGroup(self.fdim, pec_surface)
             antenna_surface_markers = [gmsh.model.addPhysicalGroup(self.fdim, [s]) for s in antenna_surface]
             farfield_surface_marker = gmsh.model.addPhysicalGroup(self.fdim, farfield_surface)
