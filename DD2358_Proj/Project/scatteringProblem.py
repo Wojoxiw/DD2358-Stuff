@@ -2,7 +2,7 @@
 ## this file makes the mesh
 
 import os ## presumably dont need this import here
-os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
+#os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx
@@ -18,11 +18,13 @@ import pyvista
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 eta0 = np.sqrt(mu0/eps0)
 
-##line profiling
-import line_profiler
-import atexit
-profile = line_profiler.LineProfiler()
-atexit.register(profile.print_stats)
+#===============================================================================
+# ##line profiling
+# import line_profiler
+# import atexit
+# profile = line_profiler.LineProfiler()
+# atexit.register(profile.print_stats)
+#===============================================================================
 
 #===============================================================================
 # ##memory profiling
@@ -198,8 +200,8 @@ class Scatt3DProblem():
             murinv_pml = ufl.inv(mur_pml)
             return epsr_pml, murinv_pml
         
+        x, y, z = ufl.SpatialCoordinate(mesh.mesh)
         if(mesh.domain_geom == 'domedCyl'): ## implement it for this geometry
-            x, y, z = ufl.SpatialCoordinate(mesh.mesh)
             r = ufl.real(ufl.sqrt(x**2 + y**2)) ## cylindrical radius. need to set this to real because I compare against it later
             domain_height_spheroid = ufl.conditional(ufl.ge(r, mesh.domain_radius), mesh.domain_height/2, (mesh.domain_height/2+mesh.dome_height)*ufl.real(ufl.sqrt(1-(r/(mesh.domain_radius+mesh.domain_spheroid_extraRadius))**2)))   ##start the z-stretching at, at minmum, the height of the domain cylinder
             PML_height_spheroid = (mesh.PML_height/2+mesh.dome_height)*ufl.sqrt(1-(r/(mesh.PML_radius+mesh.PML_spheroid_extraRadius))**2) ##should always be ge the pml cylinder's height
@@ -209,12 +211,20 @@ class Scatt3DProblem():
             x_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), x_stretched, x) ## stretch when outside radius of the domain
             y_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), y_stretched, y) ## stretch when outside radius of the domain
             z_pml = ufl.conditional(ufl.ge(abs(z), domain_height_spheroid), z_stretched, z) ## stretch when outside the height of the cylinder of the domain (or oblate spheroid roof with factor a_dom/a_pml - should only be higher/lower inside the domain radially)
+        elif(mesh.domain_geom == 'sphere'):
+            r = ufl.real(ufl.sqrt(x**2 + y**2 + z**2))
+            x_stretched = pml_stretch(x, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
+            y_stretched = pml_stretch(y, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
+            z_stretched = pml_stretch(z, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
+            x_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), x_stretched, x) ## stretch when outside radius of the domain
+            y_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), y_stretched, y) ## stretch when outside radius of the domain
+            z_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), z_stretched, z) ## stretch when outside radius of the domain
         else:
             print('nonvalid mesh.domain_geom')
         pml_coords = ufl.as_vector((x_pml, y_pml, z_pml))
         self.epsr_pml, self.murinv_pml = pml_epsr_murinv(pml_coords)
 
-    @profile
+    #@profile
     def ComputeSolutions(self, mesh, computeRef = True):
         '''
         Computes the solutions
@@ -333,7 +343,8 @@ class Scatt3DProblem():
             
             self.epsr.x.array[:] = self.epsr_array_dut
             self.S_dut, self.solutions_dut = ComputeFields()
-    @profile
+            
+    #@profile
     def makeOptVectors(self, mesh):
         '''
         Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh
@@ -425,3 +436,40 @@ class Scatt3DProblem():
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
                 xdmf2.write_function(E, i)
             xdmf2.close()
+            
+#===============================================================================
+#     def calcFarField(self, mesh):
+#         '''
+#         Calculates the farfield at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True, and a spherical geometry
+#         :param mesh: The mesh used, either reference or DUT
+#         '''
+#         
+#         self.dS_farfield = self.dS(mesh.farfield_surface_marker)
+#         n = ufl.FacetNormal(mesh.mesh)
+#         nx = n[0]('+') ## not sure how this works. hopefully it does...
+#         ny = n[1]('+')
+#         nz = n[2]('+')
+#         x, y, z = ufl.SpatialCoordinate(mesh.mesh)
+#         signfactor = ufl.sign(nx*x + ny*y + nz*z) # Enforce outward pointing normal
+#         self.F_theta = signfactor*self.prefactor * \
+#             (-(self.Cm*nz*Ephi - self.Sm*(nr*Ez - nz*Er))*self.sinphi \
+#              + (self.Sm*nz*Ephi + self.Cm*(nr*Ez - nz*Er))*self.cosphi \
+#              - etar_bkg*(self.Cm*nz*Hphi - self.Sm*(nr*Hz - nz*Hr))*self.costheta_cosphi \
+#              - etar_bkg*(self.Sm*nz*Hphi + self.Cm*(nr*Hz - nz*Hr))*self.costheta_sinphi \
+#              + etar_bkg*self.Am*nr*Hphi*self.sintheta)*self.exp_kzc*rho*dS_farfield
+# 
+#         self.F_phi = signfactor*self.prefactor * \
+#             (-(self.Cm*nz*Ephi - self.Sm*(nr*Ez - nz*Er))*self.costheta_cosphi \
+#              - (self.Sm*nz*Ephi + self.Cm*(nr*Ez - nz*Er))*self.costheta_sinphi \
+#              + self.Am*nr*Ephi*self.sintheta \
+#              + etar_bkg*(self.Cm*nz*Hphi - self.Sm*(nr*Hz - nz*Hr))*self.sinphi \
+#              - etar_bkg*(self.Sm*nz*Hphi + self.Cm*(nr*Hz - nz*Hr))*self.cosphi)*self.exp_kzc*rho*dS_farfield
+#         
+#         
+#         def eval(self, theta, phi): ## evaluates the farfield in some given direction (theta, phi)
+#             k = 2
+#             self.exp_kzc.interpolate(lambda x: np.exp(1j*k*x[1]*np.cos(theta)), self.farfield_cells)
+#             F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
+#             F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
+#             return(F_theta, F_phi)
+#===============================================================================

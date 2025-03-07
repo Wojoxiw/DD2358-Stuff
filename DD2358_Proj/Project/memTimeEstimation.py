@@ -44,10 +44,11 @@ class runTimesMems():
         '''
         The data of one previous run.
         '''
-        def __init__(self, prob):
+        def __init__(self, prob, extraInfo):
             '''
             Initialize the class.
             :param prob: The scattering problem run
+            :param extraInfo: Optional string one can add to classify the run
             :param mem: Total memory used in the problem
             '''
             self.meshingTime = prob.refMeshdata.meshingTime
@@ -57,15 +58,17 @@ class runTimesMems():
             self.Nants = prob.refMeshdata.N_antennas # number of antennas - computations are for each antenna pair
             self.size = prob.refMeshdata.ncells # Computation size (number of FEM elements)
             self.mem = prob.memCost # Total memory cost
+            self.extraInfo = extraInfo
             
-    def memTimeAppend(self, run):
+    def memTimeAppend(self, run, extraInfo = ''):
         '''
         Takes a scatteringProblem class, updates the list and saves it
         :param run: The run
+        :param extraInfo: Optional string one can add to classify the run
         '''
         if(self.comm.rank == 0): ## only use the master rank
             prev = np.empty(1, dtype=object)
-            prev[0] = self.runTimeMem(run) ## the runTimeMem, in a numpy array
+            prev[0] = self.runTimeMem(run, extraInfo) ## the runTimeMem, in a numpy array
             if(hasattr(self, 'prevRuns')): ## check if these exist
                 self.prevRuns = np.hstack((self.prevRuns, prev))
             else: ## hasn't been made yet
@@ -192,8 +195,12 @@ class runTimesMems():
                     avgstdMems[0, j] = np.mean(mems)
                     avgstdMems[1, j] = np.std(mems)
                     
-                ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewidth = 2, capsize = 6, label = f'{MPInum} MPI Processes')
-                ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewidth = 2, capsize = 6, label = f'{MPInum} MPI Processes')
+                if(MPInum == 1):
+                    label = f'{MPInum} MPI Process'
+                else:
+                    label = f'{MPInum} MPI Processes'
+                ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewidth = 2, capsize = 6, label = label)
+                ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewidth = 2, capsize = 6, label = label)
                 
             
             ax1.legend()

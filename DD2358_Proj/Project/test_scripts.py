@@ -36,7 +36,7 @@ def test_FF_SphereScatt(get_test_data): ## run a spherica domain and object, tes
     comm = MPI.COMM_WORLD
     MPInum = comm.size
     verbosity = 1
-    refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, h=1/15, domain_geom='sphere') ## this will have around 190000 elements
+    refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=1, h=1/15, domain_geom='sphere', FF_surface = True) ## this will have around 190000 elements
     prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
     
 if __name__ == '__main__':
