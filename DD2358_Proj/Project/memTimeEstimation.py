@@ -38,7 +38,7 @@ class runTimesMems():
                         self.prevRuns = runs
                     else:
                         self.prevRuns = np.hstack((self.prevRuns, runs))
-            np.savez(self.fpath, prevRuns = self.prevRuns) ## after loading, save them all together
+                np.savez(self.fpath, prevRuns = self.prevRuns) ## after loading, save them all together
         
     class runTimeMem():
         '''
