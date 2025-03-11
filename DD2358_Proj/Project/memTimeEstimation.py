@@ -144,7 +144,8 @@ class runTimesMems():
         Does its own version of calcStats, and makes plots herein
         '''
         binVals = [109624, 143465, 189130, 233557, 290155, 355864, 430880, 512558, 609766, 707748, 825148] ## the size-values (# elements) that were used for calculations
-        MPInums = [1, 12, 24] ## MPInum of runs to plot
+        MPInums = [1, 1, 12, 24] ## MPInum of runs to plot
+        runType = [[1, 'noOMPNUMTHREADS'], [1, 'bindtocore'], [1, ''], [12, ''], [24, '']] ## MPInum + extraInfo of runs to plot
         
         if(self.comm.rank == 0):
             numRuns = len(self.prevRuns)
@@ -161,7 +162,9 @@ class runTimesMems():
             ax1.set_ylabel('Time [s]')
             ax2.set_ylabel('Memory [GiB]')
             
-            for MPInum in MPInums:
+            for type in runType:
+                MPInum = type[0]
+                exInfo = type[1]
                 avgstdTimes = np.zeros((2, len(binVals))) ## array of average and standard-deviations of computation times
                 avgstdMems = np.zeros((2, len(binVals))) ## array of average and standard-deviations of memory costs
                 for j in range(len(binVals)):
@@ -170,7 +173,11 @@ class runTimesMems():
                     l = 0
                     for i in range(numRuns):
                         run = self.prevRuns[i]
-                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum): ## if correct size and MPInum, count
+                        if(hasattr(run, 'extraInfo')):
+                            eI = run.extraInfo
+                        else:
+                            eI = ''
+                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum and eI == exInfo): ## if correct size and MPInum, count
                             l+=1
                     ## then make the arrays
                     sizes = np.zeros(l)
@@ -182,7 +189,11 @@ class runTimesMems():
                     l = 0
                     for i in range(numRuns):
                         run = self.prevRuns[i]
-                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum): ## if correct size and MPInum, fill in the array vals
+                        if(hasattr(run, 'extraInfo')):
+                            eI = run.extraInfo
+                        else:
+                            eI = ''
+                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum and eI == exInfo): ## if correct size and MPInum, fill in the array vals
                             sizes[l] = run.size
                             mems[l] = run.mem
                             times[l] = run.meshingTime + run.calcTime
@@ -194,15 +205,17 @@ class runTimesMems():
                     avgstdTimes[1, j] = np.std(times)
                     avgstdMems[0, j] = np.mean(mems)
                     avgstdMems[1, j] = np.std(mems)
-                    
-                if(MPInum == 1):
+                if(exInfo == 'noOMPNUMTHREADS'):
+                    label = '1 MPI Process, No NumThreads'
+                elif(exInfo == 'bindtocore'):
+                    label = '1 MPI Process, bind-to-core'
+                elif(MPInum == 1):
                     label = f'{MPInum} MPI Process'
                 else:
                     label = f'{MPInum} MPI Processes'
                 ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewidth = 2, capsize = 6, label = label)
                 ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewidth = 2, capsize = 6, label = label)
                 
-            
             ax1.legend()
             ax2.legend()
             fig1.tight_layout()

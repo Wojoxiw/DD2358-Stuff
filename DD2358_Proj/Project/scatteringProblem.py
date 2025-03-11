@@ -57,6 +57,7 @@ class Scatt3DProblem():
                  computeImmediately = True, ## compute solutions at the end of initialization
                  computeRef = True, # If computing immediately, computes the reference simulation, where defects are not included
                  ErefEdut = False, # compute optimization vectors with Eref*Edut, a less-approximated version of the equation. Should provide better results, but can only be used in simulation
+                 excitation = 'antennas' # if 'planewave', sends in a planewave from the +x-axis, otherwise antenna excitation as normal
                  ):
         """Initialize the problem."""
         
@@ -90,6 +91,7 @@ class Scatt3DProblem():
         self.defect_mur = defect_mur
         self.fem_degree = fem_degree
         self.antenna_pol = pol
+        self.excitation = excitation
 
         # Set up mesh information
         self.refMeshdata = refMeshdata
@@ -120,7 +122,7 @@ class Scatt3DProblem():
         self.makeOptVectors(mesh)
         self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
         
-        if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
+        if(self.verbosity > 1):
             print(f'Max. memory: {mem_usage:.3f} GiB -- '+f"{self.comm.rank=} {self.comm.size=}")
         mems = self.comm.gather(mem_usage, root=self.model_rank)
         if (self.comm.rank == self.model_rank):
@@ -135,12 +137,16 @@ class Scatt3DProblem():
         # Set up some FEM function spaces and boundary condition stuff.
         curl_element = basix.ufl.element('N1curl', mesh.mesh.basix_cell(), self.fem_degree)
         self.Vspace = dolfinx.fem.functionspace(mesh.mesh, curl_element)
+        self.ScalarSpace = dolfinx.fem.functionspace(mesh.mesh, ('CG', self.fem_degree))
         
         # Create measures for subdomains and surfaces
         self.dx = ufl.Measure('dx', domain=mesh.mesh, subdomain_data=mesh.subdomains, metadata={'quadrature_degree': 5})
         self.dx_dom = self.dx((mesh.domain_marker, mesh.mat_marker, mesh.defect_marker))
         self.dx_pml = self.dx(mesh.pml_marker)
         self.ds = ufl.Measure('ds', domain=mesh.mesh, subdomain_data=mesh.boundaries)
+        self.dS = ufl.Measure('dS', domain=mesh.mesh, subdomain_data=mesh.boundaries) ## capital S for outer boundaries?
+        if(mesh.FF_surface):
+            dS_farfield = self.dS(mesh.farfield_surface_marker)
         self.ds_antennas = [self.ds(m) for m in mesh.antenna_surface_markers]
         self.ds_pec = self.ds(mesh.pec_surface_marker)
         self.pec_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=mesh.boundaries.find(mesh.pec_surface_marker))
@@ -180,7 +186,7 @@ class Scatt3DProblem():
             Calculates the PML stretching of a coordinate
             :param y: the coordinate to be stretched
             :param x: the coordinate the stretching is based on
-            :param k0: wavenumber
+            :param k: wavenumber
             :param x_dom: size of domain
             :param x_pml: size of pml
             :param n: order
@@ -284,6 +290,7 @@ class Scatt3DProblem():
             - ufl.inner(k00**2*self.epsr*E, v)*self.dx_dom \
             + ufl.inner(self.murinv_pml*curl_E, curl_v)*self.dx_pml \
             - ufl.inner(k00**2*self.epsr_pml*E, v)*self.dx_pml + eval(F_antennas_str)
+        
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
         petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## try looking this up to see if some other options might be better (apparently it is hard to find iterative solvers that converge)
@@ -317,7 +324,7 @@ class Scatt3DProblem():
                         else:
                             factor = None
                         factor = self.comm.bcast(factor, root=self.model_rank)
-                        b = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(ufl.inner(ufl.cross(E_h, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m] + Zrel/(1j*self.k0)*ufl.inner(ufl.curl(E_h), ufl.cross(Ep, nvec))*self.ds_antennas[m]))/factor
+                        b = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(ufl.inner(ufl.cross(E_h, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m] + Zrel/(1j*k0)*ufl.inner(ufl.curl(E_h), ufl.cross(Ep, nvec))*self.ds_antennas[m]))/factor
                         bs = self.comm.gather(b, root=self.model_rank)
                         if self.comm.rank == self.model_rank:
                             b = sum(bs)
@@ -412,64 +419,77 @@ class Scatt3DProblem():
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
         E = dolfinx.fem.Function(self.Wspace)
         bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
-        for pol in ['x', 'y', 'z']: ## save each pol in a different file
-            def q_abs(x, E): ## similar to the one in makeOptVectors
-                cells = []
-                cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
-                colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
-                for i, point in enumerate(x.T):
-                    if len(colliding_cells.links(i)) > 0:
-                        cells.append(colliding_cells.links(i)[0])
-                E_vals = E.eval(x.T, cells)
-                #values = np.sqrt((E_vals[:,0]*E_vals[:,0] + E_vals[:,1]*E_vals[:,1] + E_vals[:,2]*E_vals[:,2]))
-                if(pol == 'z'): ## save z-pol
-                    values = E_vals[:,2] ## this should be the z-component...
-                elif(pol == 'x'): ## save z-pol
-                    values = E_vals[:,0] ## this should be the x-component...
-                elif(pol == 'y'): ## save z-pol
-                    values = E_vals[:,1] ## this should be the y-component...
-                return values
-            E.interpolate(functools.partial(q_abs, E=self.solutions_ref[0][0])) ## fields for the first frequency and antenna
-            xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
-            xdmf2.write_mesh(self.refMeshdata.mesh)
-            for i in range(Nframes):
-                E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
-                xdmf2.write_function(E, i)
-            xdmf2.close()
+        def q_abs(x, E): ## similar to the one in makeOptVectors
+            cells = []
+            cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
+            colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
+            for i, point in enumerate(x.T):
+                if len(colliding_cells.links(i)) > 0:
+                    cells.append(colliding_cells.links(i)[0])
+            E_vals = E.eval(x.T, cells)
+            return E_vals
+        E.interpolate(functools.partial(q_abs, E=self.solutions_ref[0][0])) ## fields for the first frequency and antenna
+        xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE.xdmf', file_mode='w')
+        xdmf2.write_mesh(self.refMeshdata.mesh)
+        for i in range(Nframes):
+            E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
+            xdmf2.write_function(E, i)
+        xdmf2.close()
             
-#===============================================================================
-#     def calcFarField(self, mesh):
-#         '''
-#         Calculates the farfield at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True, and a spherical geometry
-#         :param mesh: The mesh used, either reference or DUT
-#         '''
-#         
-#         self.dS_farfield = self.dS(mesh.farfield_surface_marker)
-#         n = ufl.FacetNormal(mesh.mesh)
-#         nx = n[0]('+') ## not sure how this works. hopefully it does...
-#         ny = n[1]('+')
-#         nz = n[2]('+')
-#         x, y, z = ufl.SpatialCoordinate(mesh.mesh)
-#         signfactor = ufl.sign(nx*x + ny*y + nz*z) # Enforce outward pointing normal
-#         self.F_theta = signfactor*self.prefactor * \
-#             (-(self.Cm*nz*Ephi - self.Sm*(nr*Ez - nz*Er))*self.sinphi \
-#              + (self.Sm*nz*Ephi + self.Cm*(nr*Ez - nz*Er))*self.cosphi \
-#              - etar_bkg*(self.Cm*nz*Hphi - self.Sm*(nr*Hz - nz*Hr))*self.costheta_cosphi \
-#              - etar_bkg*(self.Sm*nz*Hphi + self.Cm*(nr*Hz - nz*Hr))*self.costheta_sinphi \
-#              + etar_bkg*self.Am*nr*Hphi*self.sintheta)*self.exp_kzc*rho*dS_farfield
-# 
-#         self.F_phi = signfactor*self.prefactor * \
-#             (-(self.Cm*nz*Ephi - self.Sm*(nr*Ez - nz*Er))*self.costheta_cosphi \
-#              - (self.Sm*nz*Ephi + self.Cm*(nr*Ez - nz*Er))*self.costheta_sinphi \
-#              + self.Am*nr*Ephi*self.sintheta \
-#              + etar_bkg*(self.Cm*nz*Hphi - self.Sm*(nr*Hz - nz*Hr))*self.sinphi \
-#              - etar_bkg*(self.Sm*nz*Hphi + self.Cm*(nr*Hz - nz*Hr))*self.cosphi)*self.exp_kzc*rho*dS_farfield
-#         
-#         
-#         def eval(self, theta, phi): ## evaluates the farfield in some given direction (theta, phi)
-#             k = 2
-#             self.exp_kzc.interpolate(lambda x: np.exp(1j*k*x[1]*np.cos(theta)), self.farfield_cells)
-#             F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
-#             F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
-#             return(F_theta, F_phi)
-#===============================================================================
+    def calcFarField(self, reference, angles = np.array([90, 180])):
+        '''
+        Calculates the farfield at each frequency point at at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True
+        Returns an array of [E_theta, E_phi] at each angle
+        :param reference: Whether this is being computed for the DUT case or the reference
+        :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0)
+        '''
+        if(reference):
+            mesh = self.refMeshdata
+            sols = self.solutions_ref
+        else:
+            mesh = self.DUTMeshdata
+            sols = self.solutions_dut
+            
+            
+        numAngles = np.shape(angles)[0]
+        prefactor = dolfinx.fem.Constant(mesh, 0j)
+        n = ufl.FacetNormal(mesh.mesh)('+') ## normal direction, hopefully ('+') means outward
+        #nx = n[0]('+') ## not sure how this works. hopefully it does...
+        #ny = n[1]('+')
+        #nz = n[2]('+')
+        x, y, z = ufl.SpatialCoordinate(mesh.mesh)
+        signfactor = ufl.sign(ufl.inner(n, [x, y, z])) # Enforce outward pointing normal
+        
+        ScalarSpace = dolfinx.fem.functionspace(mesh.mesh, ('CG', self.fem_degree))
+        exp_kr = dolfinx.fem.Function(self.ScalarSpace)
+        
+        farfields = np.zeros((self.Nf, numAngles, 2)) ## for each frequency and angle, E_theta and E_phi
+        for b in range(self.Nf):
+            freq = self.fvec[b]
+            k = 2*np.pi*freq/c0
+            E = self.solutions_ref[b][0]
+            
+            for i in range(numAngles):
+                theta = angles[i,0]*pi/180 # convert to radians first
+                phi = angles[i,1]*pi/180
+                
+                khat = np.array([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)])
+                phiHat = np.array([-np.sin(phi), np.cos(phi), 0])
+                thetaHat = np.array([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
+                
+                H = 2*pi/freq*k*ufl.cross(khat, E)#1/(1j*k*self.mur_bkg)*ufl.curl(E) ## or possibly B = 1/w k x E
+                
+                self.F_theta = signfactor*prefactor* ufl.inner( thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H)) ) *exp_kr*self.dS_farfield))
+                self.F_phi = signfactor*prefactor* ufl.inner( phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H)) ) *exp_kr*self.dS_farfield))
+         
+                 
+                def eval(self, theta, phi): ## evaluates the farfield in some given direction (theta, phi)
+                    k = 2
+                    self.exp_kr.interpolate(lambda x: np.exp(1j*k*ufl.dot(khat, x)), self.farfield_cells)
+                    prefactor.value = 1j*k/(4*pi)
+                    
+                    
+                    F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
+                    F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
+                    return(F_theta, F_phi)
+            
