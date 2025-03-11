@@ -92,11 +92,11 @@ if __name__ == '__main__':
     
     
     #testRun()
-    #profilingMemsTimes()
+    profilingMemsTimes()
     #actualProfilerRunning()
     
-    otherprevs = []
-    prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
-    prevRuns.makePlotsSTD()
+    #otherprevs = []
+    #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
+    #prevRuns.makePlotsSTD()
     
     print('runScatt3D complete exiting...')
