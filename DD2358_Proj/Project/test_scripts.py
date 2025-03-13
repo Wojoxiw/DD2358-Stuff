@@ -38,6 +38,9 @@ def test_FF_SphereScatt(get_test_data): ## run a spherica domain and object, tes
     verbosity = 1
     refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=1, h=1/15, domain_geom='sphere', FF_surface = True) ## this will have around 190000 elements
     prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave')
+    angles = np.array([90, 180])
+    prob.calcFarField(reference=True, angles = angles)
+    
     
 if __name__ == '__main__':
     args_str = "-v -s"

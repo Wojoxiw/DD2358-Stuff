@@ -8,7 +8,7 @@
 
 #SBATCH -o jobresults/%j_result.out ## result filename, %j becomes the job number
 #SBATCH -e jobresults/%j_result.err ## errors filename - should be empty unless an error occurs
-#SBATCH -J MPI1bindtocore ##puts a job name, to identify it
+#SBATCH -J MPI12-2threads ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 
@@ -27,9 +27,9 @@ cp -p data3D/prevRuns.npz $SNIC_TMP"/data3D"
 cd $SNIC_TMP ## go to that directory to run the script
 
 #time python Scatt3D.py ### then run it... and time it
-#export MPInum=1 ## number of MPI processes
-#time mpirun -n $MPInum python runScatt3D.py ## run the main process, and time it
-mpirun --bind-to core python runScatt3D.py
+export MPInum=12 ## number of MPI processes
+time mpirun -n $MPInum python runScatt3D.py ## run the main process, and time it
+#mpirun --bind-to core python runScatt3D.py
 
 # cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to whatever directory you were in when using sbatch jobscript.sh
 cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also

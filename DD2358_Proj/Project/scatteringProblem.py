@@ -2,7 +2,7 @@
 ## this file makes the mesh
 
 import os ## presumably dont need this import here
-#os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
+os.environ["OMP_NUM_THREADS"] = "2" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx
@@ -57,7 +57,9 @@ class Scatt3DProblem():
                  computeImmediately = True, ## compute solutions at the end of initialization
                  computeRef = True, # If computing immediately, computes the reference simulation, where defects are not included
                  ErefEdut = False, # compute optimization vectors with Eref*Edut, a less-approximated version of the equation. Should provide better results, but can only be used in simulation
-                 excitation = 'antennas' # if 'planewave', sends in a planewave from the +x-axis, otherwise antenna excitation as normal
+                 excitation = 'antennas', # if 'planewave', sends in a planewave from the +x-axis, otherwise antenna excitation as normal
+                 PW_dir = np.array([-1, 0, 0]), ## incident direction of the plane-wave, if used above. Default is coming in from the x-axis
+                 PW_pol = np.array([0, 0, 1]), ## incident polarization of the plane-wave, if used above. Default is along the z-axis
                  ):
         """Initialize the problem."""
         
@@ -92,6 +94,9 @@ class Scatt3DProblem():
         self.fem_degree = fem_degree
         self.antenna_pol = pol
         self.excitation = excitation
+        
+        self.PW_dir = PW_dir
+        self.PW_pol = PW_pol
 
         # Set up mesh information
         self.refMeshdata = refMeshdata
@@ -238,8 +243,7 @@ class Scatt3DProblem():
         :param computeRef: if True, computes the reference case (this is always needed for reconstruction). if False, computes the DUT case (needed for simulation-only stuff).
         Since things need to be initialized for each mesh, that should be done first.
         '''
-        # Set up the excitation - on antenna faces
-        def Eport(x):
+        def Eport(x): # Set up the excitation - on antenna faces
             """
             Compute the normalized electric field distribution in all ports.
             :param x: some given position you want to find the field on
@@ -272,7 +276,7 @@ class Scatt3DProblem():
     
         Ep = dolfinx.fem.Function(self.Vspace)
         Ep.interpolate(lambda x: Eport(x))
-        
+        Eb = dolfinx.fem.Function(self.Vspace) ## background/plane wave excitation
         
         # Set up simulation
         E = ufl.TrialFunction(self.Vspace)
@@ -289,7 +293,8 @@ class Scatt3DProblem():
         F = ufl.inner(1/self.mur*curl_E, curl_v)*self.dx_dom \
             - ufl.inner(k00**2*self.epsr*E, v)*self.dx_dom \
             + ufl.inner(self.murinv_pml*curl_E, curl_v)*self.dx_pml \
-            - ufl.inner(k00**2*self.epsr_pml*E, v)*self.dx_pml + eval(F_antennas_str)
+            - ufl.inner(k00**2*self.epsr_pml*E, v)*self.dx_pml \
+            - ufl.inner(k00**2*(self.epsr - 1/self.mur*self.mur_bkg*self.epsr_bkg)*Eb, v)*self.dx_dom + eval(F_antennas_str) ## background field and antenna terms
         
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
@@ -298,7 +303,7 @@ class Scatt3DProblem():
         
         def ComputeFields():
             '''
-            Computes the fields
+            Computes the fields. There are two cases: one with antennas, and one without (PW excitation)
             '''
             S = np.zeros((self.Nf, mesh.N_antennas, mesh.N_antennas), dtype=complex)
             solutions = []
@@ -310,6 +315,20 @@ class Scatt3DProblem():
                 k00.value = k0
                 Zrel.value = k00.value/np.sqrt(k00.value**2 - mesh.kc**2)
                 self.CalculatePML(mesh, k0)  ## update PML to this freq.
+                
+                def planeWave(x):
+                    '''
+                    Set up the excitation for a background plane-wave. Uses the problem's PW parameters. Needs the frequency, so I do it inside the freq. loop
+                    :param x: some given position you want to find the field on
+                    '''
+                    E_pw = np.zeros((3, x.shape[1]), dtype=complex)
+                    if(self.excitation == 'planewave'): # only make an excitation if we actually want one
+                        E0 = self.PW_pol ## just use the same amplitude as the polarization has
+                        k_pw = k0*self.PW_dir ## direction (should be given normalized)
+                        E_pw = E0*np.exp(-1j*np.dot(k_pw, x))
+                    return E_pw
+                
+                Eb.interpolate(lambda x: planeWave(x))
                 sols = []
                 for n in range(mesh.N_antennas):
                     for m in range(mesh.N_antennas):

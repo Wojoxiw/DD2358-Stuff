@@ -145,7 +145,7 @@ class runTimesMems():
         '''
         binVals = [109624, 143465, 189130, 233557, 290155, 355864, 430880, 512558, 609766, 707748, 825148] ## the size-values (# elements) that were used for calculations
         MPInums = [1, 1, 12, 24] ## MPInum of runs to plot
-        runType = [[1, 'noOMPNUMTHREADS'], [1, 'bindtocore'], [1, ''], [12, ''], [24, '']] ## MPInum + extraInfo of runs to plot
+        runType = [[1, 'noOMPNUMTHREADS'], [0, 'bindtocore'], [1, ''], [12, ''], [24, '']] ## MPInum + extraInfo of runs to plot. If zero, allows any
         
         if(self.comm.rank == 0):
             numRuns = len(self.prevRuns)
@@ -177,7 +177,7 @@ class runTimesMems():
                             eI = run.extraInfo
                         else:
                             eI = ''
-                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum and eI == exInfo): ## if correct size and MPInum, count
+                        if(np.isclose(run.size, binVal) and (run.MPInum == MPInum or MPInum == 0) and eI == exInfo): ## if correct size and MPInum, count
                             l+=1
                     ## then make the arrays
                     sizes = np.zeros(l)
@@ -193,7 +193,7 @@ class runTimesMems():
                             eI = run.extraInfo
                         else:
                             eI = ''
-                        if(np.isclose(run.size, binVal) and run.MPInum == MPInum and eI == exInfo): ## if correct size and MPInum, fill in the array vals
+                        if(np.isclose(run.size, binVal) and (run.MPInum == MPInum or MPInum == 0) and eI == exInfo): ## if correct size and MPInum, fill in the array vals
                             sizes[l] = run.size
                             mems[l] = run.mem
                             times[l] = run.meshingTime + run.calcTime
@@ -208,7 +208,7 @@ class runTimesMems():
                 if(exInfo == 'noOMPNUMTHREADS'):
                     label = '1 MPI Process, No NumThreads'
                 elif(exInfo == 'bindtocore'):
-                    label = '1 MPI Process, bind-to-core'
+                    label = 'bind-to-core - uses 24 processes'
                 elif(MPInum == 1):
                     label = f'{MPInum} MPI Process'
                 else:
