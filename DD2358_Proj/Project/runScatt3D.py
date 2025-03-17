@@ -6,7 +6,7 @@
 # Alexandros Pallaris, after that
 
 import os
-os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
+#os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx, ufl, basix
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     
     
     def profilingMemsTimes(): ## as used to make plots for the report
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI1-2nodes12processes.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI1-2nodes1process.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
         numRuns = 10 ## run these 10 times to find averages/stds
         hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
         for i in range(numRuns):
