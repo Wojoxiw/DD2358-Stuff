@@ -8,7 +8,7 @@
 
 #SBATCH -o jobresults/%j_result.out ## result filename, %j becomes the job number
 #SBATCH -e jobresults/%j_result.err ## errors filename - should be empty unless an error occurs
-#SBATCH -J MPI12-2nodes ##puts a job name, to identify it
+#SBATCH -J MPI1-2nodes ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 
