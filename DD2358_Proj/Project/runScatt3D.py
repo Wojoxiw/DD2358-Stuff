@@ -6,7 +6,7 @@
 # Alexandros Pallaris, after that
 
 import os
-os.environ["OMP_NUM_THREADS"] = "2" # seemingly needed for MPI speedup
+#os.environ["OMP_NUM_THREADS"] = "2" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx, ufl, basix
@@ -25,6 +25,7 @@ import scipy
 
 from memory_profiler import memory_usage
 from timeit import default_timer as timer
+import time
 import sys
 import meshMaker
 import scatteringProblem
@@ -63,7 +64,7 @@ if __name__ == '__main__':
     
     
     def profilingMemsTimes(): ## as used to make plots for the report
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI12-2threads.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI1-2nodes12processes.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
         numRuns = 10 ## run these 10 times to find averages/stds
         hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
         for i in range(numRuns):
@@ -89,21 +90,23 @@ if __name__ == '__main__':
         prob.saveEFieldsForAnim()
         #prevRuns.memTimeAppend(prob)
         
-    def testFarField():
+    def testFarField(): ## run a spherica domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = True, verbosity = verbosity, N_antennas=1, h=1/15, domain_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, h=1/15, domain_geom='sphere', FF_surface = True)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave')
         prob.saveEFieldsForAnim()
-        #prevRuns.memTimeAppend(prob)
+        angles = np.array([90, 180])
+        prob.calcFarField(reference=True, angles = angles)
     
     
     #testRun()
     profilingMemsTimes()
     #actualProfilerRunning()
+    #testFarField()
     
-    #otherprevs = []
+    otherprevs = []
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
     #prevRuns.makePlotsSTD()
     
     if(comm.rank == model_rank):
-        print('runScatt3D complete exiting...')
+        print('runScatt3D complete, exiting...')

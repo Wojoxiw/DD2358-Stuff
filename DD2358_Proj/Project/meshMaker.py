@@ -2,7 +2,6 @@
 ## this file makes the mesh
 
 import os ## presumably dont need this import here
-os.environ["OMP_NUM_THREADS"] = "2" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx
@@ -169,6 +168,7 @@ class MeshData():
             gmsh.option.setNumber('General.Verbosity', self.verbosity)
             gmsh.option.setNumber("Mesh.CharacteristicLengthMin", self.h)
             gmsh.option.setNumber("Mesh.CharacteristicLengthMax", self.h)
+            gmsh.logger.start()
              
             inPECSurface = []; inAntennaSurface = []; antennas_DimTags = []
             ## Make the antennas
@@ -231,15 +231,18 @@ class MeshData():
                 pml = gmsh.model.occ.addSphere(0, 0, 0, self.PML_radius)
                 domain = [(self.tdim, domain)] # needs to be dim, tags
                 pml = [(self.tdim, pml)] # needs to be dim, tags
-                
             if(self.FF_surface):
                 FF_c = np.array([0, 0, self.h/10]) ## the centre of this should be displaced slightly off-center so it can be found by its Centre of Mass... there must be a better way
                 FF_surface = gmsh.model.occ.addSphere(FF_c[0], FF_c[1], FF_c[2], self.FF_surface_radius)
                 inFF_surface = lambda x: np.allclose(x, FF_c)
+                matDimTags.append((self.tdim, FF_surface)) ## this surface is part of the material
             
             # Create fragments and dimtags
             outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + antennas_DimTags)
-            removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-self.N_antennas:]]]
+            if(self.N_antennas > 0):
+                removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-self.N_antennas:]]]
+            else:
+                removeDimTags = []
             defectDimTags = [x[0] for x in outDimTagsMap[3:] if x[0] not in removeDimTags]
             matDimTags = [x for x in outDimTagsMap[2] if x not in defectDimTags]
             domainDimTags = [x for x in outDimTagsMap[1] if x not in removeDimTags+matDimTags+defectDimTags]

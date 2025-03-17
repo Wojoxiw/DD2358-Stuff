@@ -2,7 +2,6 @@
 ## this file makes the mesh
 
 import os ## presumably dont need this import here
-os.environ["OMP_NUM_THREADS"] = "2" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx
@@ -104,15 +103,17 @@ class Scatt3DProblem():
         if(DUTMeshdata != None):
             self.DUTMeshdata = DUTMeshdata
             self.DUTMeshdata.mesh.topology.create_connectivity(self.tdim, self.tdim)
-        
-        
-        
+
         # Calculate solutions
         if(computeImmediately):
             self.compute(computeRef)
     
     #@profile
     def compute(self, computeRef=True):
+        '''
+        Sets up and runs the simulation. All the setup is set to reflect the current mesh, reference or dut. Solutions are saved.
+        :param computeRef: If True, computes on the reference mesh
+        '''
         t1 = timer()
         if(computeRef):
             mesh = self.refMeshdata
@@ -154,10 +155,13 @@ class Scatt3DProblem():
             dS_farfield = self.dS(mesh.farfield_surface_marker)
         self.ds_antennas = [self.ds(m) for m in mesh.antenna_surface_markers]
         self.ds_pec = self.ds(mesh.pec_surface_marker)
-        self.pec_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=mesh.boundaries.find(mesh.pec_surface_marker))
         self.Ezero = dolfinx.fem.Function(self.Vspace)
         self.Ezero.x.array[:] = 0.0
-        self.bc_pec = dolfinx.fem.dirichletbc(self.Ezero, self.pec_dofs)
+        if(mesh.N_antennas > 0): ## the only PEC surfaces are the antennas, currently
+            self.pec_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=mesh.boundaries.find(mesh.pec_surface_marker))
+            self.bc_pec = dolfinx.fem.dirichletbc(self.Ezero, self.pec_dofs)
+        else:
+            self.bc_pec = []
         
     def InitializeMaterial(self, mesh):
         # Set up material parameters. Not chancing mur for now, need to edit this if doing so
@@ -287,7 +291,7 @@ class Scatt3DProblem():
         Zrel = dolfinx.fem.Constant(mesh.mesh, 1j)
         k00 = dolfinx.fem.Constant(mesh.mesh, 1j)
         a = [dolfinx.fem.Constant(mesh.mesh, 1.0 + 0j) for n in range(mesh.N_antennas)]
-        F_antennas_str = ''
+        F_antennas_str = '0' ## seems to give an error when evaluating an empty string
         for n in range(mesh.N_antennas):
             F_antennas_str += f"""+ 1j*k00/Zrel*ufl.inner(ufl.cross(E, nvec), ufl.cross(v, nvec))*self.ds_antennas[{n}] - 1j*k00/Zrel*2*a[{n}]*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(v, nvec))*self.ds_antennas[{n}]"""
         F = ufl.inner(1/self.mur*curl_E, curl_v)*self.dx_dom \
@@ -304,6 +308,7 @@ class Scatt3DProblem():
         def ComputeFields():
             '''
             Computes the fields. There are two cases: one with antennas, and one without (PW excitation)
+            Returns solutions, a list of Es for each frequency and exciting antenna, and S (0 if no antennas), a list of S-parameters for each frequency, exciting antenna, and receiving antenna
             '''
             S = np.zeros((self.Nf, mesh.N_antennas, mesh.N_antennas), dtype=complex)
             solutions = []
@@ -330,28 +335,33 @@ class Scatt3DProblem():
                 
                 Eb.interpolate(lambda x: planeWave(x))
                 sols = []
-                for n in range(mesh.N_antennas):
-                    for m in range(mesh.N_antennas):
-                        a[m].value = 0.0
-                    a[n].value = 1.0
+                
+                if(mesh.N_antennas == 0): ## if no antennas:
                     E_h = problem.solve()
-                    for m in range(mesh.N_antennas):
-                        factor = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(2*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m]))
-                        factors = self.comm.gather(factor, root=self.model_rank)
-                        if self.comm.rank == self.model_rank:
-                            factor = sum(factors)
-                        else:
-                            factor = None
-                        factor = self.comm.bcast(factor, root=self.model_rank)
-                        b = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(ufl.inner(ufl.cross(E_h, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m] + Zrel/(1j*k0)*ufl.inner(ufl.curl(E_h), ufl.cross(Ep, nvec))*self.ds_antennas[m]))/factor
-                        bs = self.comm.gather(b, root=self.model_rank)
-                        if self.comm.rank == self.model_rank:
-                            b = sum(bs)
-                        else:
-                            b = None
-                        b = self.comm.bcast(b, root=self.model_rank)
-                        S[nf,m,n] = b
                     sols.append(E_h.copy())
+                else:
+                    for n in range(mesh.N_antennas):
+                        for m in range(mesh.N_antennas):
+                            a[m].value = 0.0
+                        a[n].value = 1.0
+                        E_h = problem.solve()
+                        for m in range(mesh.N_antennas):
+                            factor = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(2*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m]))
+                            factors = self.comm.gather(factor, root=self.model_rank)
+                            if self.comm.rank == self.model_rank:
+                                factor = sum(factors)
+                            else:
+                                factor = None
+                            factor = self.comm.bcast(factor, root=self.model_rank)
+                            b = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(ufl.inner(ufl.cross(E_h, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m] + Zrel/(1j*k0)*ufl.inner(ufl.curl(E_h), ufl.cross(Ep, nvec))*self.ds_antennas[m]))/factor
+                            bs = self.comm.gather(b, root=self.model_rank)
+                            if self.comm.rank == self.model_rank:
+                                b = sum(bs)
+                            else:
+                                b = None
+                            b = self.comm.bcast(b, root=self.model_rank)
+                            S[nf,m,n] = b
+                        sols.append(E_h.copy())
                 solutions.append(sols)
             return S, solutions
         
@@ -469,7 +479,6 @@ class Scatt3DProblem():
             mesh = self.DUTMeshdata
             sols = self.solutions_dut
             
-            
         numAngles = np.shape(angles)[0]
         prefactor = dolfinx.fem.Constant(mesh, 0j)
         n = ufl.FacetNormal(mesh.mesh)('+') ## normal direction, hopefully ('+') means outward
@@ -486,7 +495,7 @@ class Scatt3DProblem():
         for b in range(self.Nf):
             freq = self.fvec[b]
             k = 2*np.pi*freq/c0
-            E = self.solutions_ref[b][0]
+            E = sols[b][0]('+')
             
             for i in range(numAngles):
                 theta = angles[i,0]*pi/180 # convert to radians first
@@ -496,19 +505,19 @@ class Scatt3DProblem():
                 phiHat = np.array([-np.sin(phi), np.cos(phi), 0])
                 thetaHat = np.array([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
                 
-                H = 2*pi/freq*k*ufl.cross(khat, E)#1/(1j*k*self.mur_bkg)*ufl.curl(E) ## or possibly B = 1/w k x E
+                H = -1/(1j*k*self.mur_bkg)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
                 
                 self.F_theta = signfactor*prefactor* ufl.inner( thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H)) ) *exp_kr*self.dS_farfield))
                 self.F_phi = signfactor*prefactor* ufl.inner( phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H)) ) *exp_kr*self.dS_farfield))
          
-                 
-                def eval(self, theta, phi): ## evaluates the farfield in some given direction (theta, phi)
-                    k = 2
+                def evalFs(self): ## evaluates the farfield in some given direction khat
                     self.exp_kr.interpolate(lambda x: np.exp(1j*k*ufl.dot(khat, x)), self.farfield_cells)
                     prefactor.value = 1j*k/(4*pi)
-                    
                     
                     F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
                     F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
                     return(F_theta, F_phi)
+                
+                farfields[b, i] = evalFs(theta, phi)
             
+        return farfields
