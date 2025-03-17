@@ -8,7 +8,7 @@
 
 #SBATCH -o jobresults/%j_result.out ## result filename, %j becomes the job number
 #SBATCH -e jobresults/%j_result.err ## errors filename - should be empty unless an error occurs
-#SBATCH -J MPI1-2nodes ##puts a job name, to identify it
+#SBATCH -J MPI2-2nodes ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
 
@@ -40,4 +40,4 @@ cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also
 '
 
 ## if not using node-local disk, just run it and hopefully this does not slow things down much
-time mpirun -n 1 python runScatt3D.py ## run the main process, and time it
+time mpirun -n 2 python runScatt3D.py ## run the main process, and time it

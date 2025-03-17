@@ -64,7 +64,7 @@ if __name__ == '__main__':
     
     
     def profilingMemsTimes(): ## as used to make plots for the report
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI1-2nodes1processnonumthreads.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI2-2nodes2processesnonumthreads.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
         numRuns = 10 ## run these 10 times to find averages/stds
         hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
         for i in range(numRuns):
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     #testFarField()
     
-    otherprevs = ['prevRunsMPI1-2nodes12processes.npz', 'prevRunsMPI1-2nodes1processnonumthreads.npz', 'prevRunsMPI2-2nodes2processes.npz']
+    otherprevs = ['prevRunsMPI1-2nodes12processes.npz', 'prevRunsMPI1-2nodes1processnonumthreads.npz', 'prevRunsMPI2-2nodes2processesnonumthreads.npz']
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
     #prevRuns.makePlotsSTD()
     
