@@ -6,7 +6,7 @@
 # Alexandros Pallaris, after that
 
 import os
-#os.environ["OMP_NUM_THREADS"] = "2" # seemingly needed for MPI speedup
+os.environ["OMP_NUM_THREADS"] = "1" # seemingly needed for MPI speedup
 from mpi4py import MPI
 import numpy as np
 import dolfinx, ufl, basix
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     #testFarField()
     
-    otherprevs = []
+    otherprevs = ['prevRunsMPI1-2nodes12processes.npz']
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
     #prevRuns.makePlotsSTD()
     

@@ -40,4 +40,4 @@ cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also
 '
 
 ## if not using node-local disk, just run it and hopefully this does not slow things down much
-time mpirun -n $MPInum python runScatt3D.py ## run the main process, and time it
+time mpirun -n 12 python runScatt3D.py ## run the main process, and time it
