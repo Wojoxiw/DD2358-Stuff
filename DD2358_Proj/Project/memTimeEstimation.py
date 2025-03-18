@@ -212,6 +212,15 @@ class runTimesMems():
                     label = 'bind-to-core - uses 24 processes'
                 elif(exInfo == '2threads'):
                     label = '12 MPI Processes, 2 threads'
+                elif(exInfo == 'MPI64nodes'):
+                    label = '6 MPI Processes, 4 nodes'
+                    linestyle = ':'
+                elif(exInfo == 'MPIBTC4nodes'):
+                    label = 'MPI BTC, 4 nodes'
+                    linestyle = ':'
+                elif(exInfo == 'MPI1NNT4nodes'):
+                    label = 'MPI 1, 4 nodes'
+                    linestyle = ':'
                 elif(MPInum == 1):
                     label = f'{MPInum} MPI Process'
                 else:
