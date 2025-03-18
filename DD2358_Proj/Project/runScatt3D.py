@@ -64,7 +64,7 @@ if __name__ == '__main__':
     
     
     def profilingMemsTimes(): ## as used to make plots for the report
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPI6-4nodes.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = 'prevRunsMPIBTC-4nodes.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
         numRuns = 10 ## run these 10 times to find averages/stds
         hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
         for i in range(numRuns):
@@ -75,7 +75,7 @@ if __name__ == '__main__':
             for h in hs:
                 refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h)
                 prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
-                prevRuns.memTimeAppend(prob, 'MPI64nodes')
+                prevRuns.memTimeAppend(prob, 'MPIBTC4nodes')
     
     def actualProfilerRunning(): # Here I call more things explicitly in order to more easily profile the code in separate methods (profiling activated in the methods themselves also).
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/12) ## this will have around 190000 elements
@@ -104,7 +104,7 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     #testFarField()
     
-    otherprevs = ['prevRunsMPI6-4nodes.npz']
+    otherprevs = ['prevRunsMPI6-4nodes.npz', 'prevRunsMPIBTC-4nodes.npz']
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
     #prevRuns.makePlotsSTD()
     
