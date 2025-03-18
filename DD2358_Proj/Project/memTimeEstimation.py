@@ -221,6 +221,9 @@ class runTimesMems():
                 elif(exInfo == 'MPI1NNT4nodes'):
                     label = 'MPI 1, 4 nodes'
                     linestyle = ':'
+                elif(exInfo == 'MPI4-6T4nodes'):
+                    label = 'MPI 4, 6 threads each, 4 nodes'
+                    linestyle = ':'
                 elif(MPInum == 1):
                     label = f'{MPInum} MPI Process'
                 else:
