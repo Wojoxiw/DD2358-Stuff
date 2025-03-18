@@ -43,3 +43,30 @@ Some info:
 #read something? with more slurm-job#.out
 ##cancel job with scancel job#
 ## queue jobs sequentially with sbatch -d afterok:firstjobid run_script.sh
+
+
+
+
+Potential jobscript thing to send/retrieve data to node-local disks:
+: '
+## NODE LOCAL DISK
+## if using node-local disk, move files over to it before running, then back after
+srun -n $SLURM_NNODES -N $SLURM_NNODES cp -p runScatt3D.py $SNIC_TMP ## reads this file into the node-local disks/execution directories. I first update it with git pull origin master
+srun -n $SLURM_NNODES -N $SLURM_NNODES cp -p meshMaker.py $SNIC_TMP
+srun -n $SLURM_NNODES -N $SLURM_NNODES cp -p memTimeEstimation.py $SNIC_TMP
+srun -n $SLURM_NNODES -N $SLURM_NNODES cp -p scatteringProblem.py $SNIC_TMP
+cd $SNIC_TMP ## go to that directory to make the data 3D folder so I can move my input file(s) there... then go back to move stuff.
+mkdir data3D ## Presumably (hopefully) the rank 0 process is here, so all files will be saved in this directory
+cd $SLURM_SUBMIT_DIR
+cp -p data3D/prevRuns.npz $SNIC_TMP"/data3D"
+cd $SNIC_TMP ## go to that directory to run the script
+
+#time python Scatt3D.py ### then run it... and time it
+export MPInum=12 ## number of MPI processes
+time mpirun -n $MPInum python runScatt3D.py ## run the main process, and time it
+#mpirun --bind-to core python runScatt3D.py
+
+# cp -p prevRuns.info $SLURM_SUBMIT_DIR ## copies this file out to whatever directory you were in when using sbatch jobscript.sh
+cp -rp data3D $SLURM_SUBMIT_DIR/ ## copy the data folder over also
+## NODE LOCAL DISK
+'

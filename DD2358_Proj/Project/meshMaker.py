@@ -235,7 +235,8 @@ class MeshData():
                 FF_c = np.array([0, 0, self.h/10]) ## the centre of this should be displaced slightly off-center so it can be found by its Centre of Mass... there must be a better way
                 FF_surface = gmsh.model.occ.addSphere(FF_c[0], FF_c[1], FF_c[2], self.FF_surface_radius)
                 inFF_surface = lambda x: np.allclose(x, FF_c)
-                matDimTags.append((self.tdim, FF_surface)) ## this surface is part of the material
+                #domain.append((self.tdim, FF_surface)) ## this surface is part of the material
+                domain = gmsh.model.occ.fuse([(self.tdim, FF_surface)], domain)[0] ## this surface is part of the domain
             
             # Create fragments and dimtags
             outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + antennas_DimTags)

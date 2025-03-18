@@ -205,6 +205,7 @@ class runTimesMems():
                     avgstdTimes[1, j] = np.std(times)
                     avgstdMems[0, j] = np.mean(mems)
                     avgstdMems[1, j] = np.std(mems)
+                linestyle = '-' # default style
                 if(exInfo == 'noOMPNUMTHREADS'):
                     label = '1 MPI Process, No NumThreads'
                 elif(exInfo == 'bindtocore'):
@@ -215,8 +216,8 @@ class runTimesMems():
                     label = f'{MPInum} MPI Process'
                 else:
                     label = f'{MPInum} MPI Processes'
-                ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewidth = 2, capsize = 6, label = label)
-                ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewidth = 2, capsize = 6, label = label)
+                ax1.errorbar(binVals, avgstdTimes[0], avgstdTimes[1], linewidth = 2, capsize = 6, label = label, linestyle = linestyle)
+                ax2.errorbar(binVals, avgstdMems[0], avgstdMems[1], linewidth = 2, capsize = 6, label = label, linestyle = linestyle)
                 
             ax1.legend()
             ax2.legend()

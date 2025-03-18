@@ -100,9 +100,11 @@ class Scatt3DProblem():
         # Set up mesh information
         self.refMeshdata = refMeshdata
         self.refMeshdata.mesh.topology.create_connectivity(self.tdim, self.tdim)
+        self.refMeshdata.mesh.topology.create_connectivity(self.fdim, self.tdim) ## required when there are no antennas, for some reason
         if(DUTMeshdata != None):
             self.DUTMeshdata = DUTMeshdata
             self.DUTMeshdata.mesh.topology.create_connectivity(self.tdim, self.tdim)
+            self.DUTMeshdata.mesh.topology.create_connectivity(self.fdim, self.tdim) ## required when there are no antennas, for some reason
 
         # Calculate solutions
         if(computeImmediately):
@@ -157,11 +159,8 @@ class Scatt3DProblem():
         self.ds_pec = self.ds(mesh.pec_surface_marker)
         self.Ezero = dolfinx.fem.Function(self.Vspace)
         self.Ezero.x.array[:] = 0.0
-        if(mesh.N_antennas > 0): ## the only PEC surfaces are the antennas, currently
-            self.pec_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=mesh.boundaries.find(mesh.pec_surface_marker))
-            self.bc_pec = dolfinx.fem.dirichletbc(self.Ezero, self.pec_dofs)
-        else:
-            self.bc_pec = []
+        self.pec_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=mesh.boundaries.find(mesh.pec_surface_marker))
+        self.bc_pec = dolfinx.fem.dirichletbc(self.Ezero, self.pec_dofs)
         
     def InitializeMaterial(self, mesh):
         # Set up material parameters. Not chancing mur for now, need to edit this if doing so
@@ -299,7 +298,6 @@ class Scatt3DProblem():
             + ufl.inner(self.murinv_pml*curl_E, curl_v)*self.dx_pml \
             - ufl.inner(k00**2*self.epsr_pml*E, v)*self.dx_pml \
             - ufl.inner(k00**2*(self.epsr - 1/self.mur*self.mur_bkg*self.epsr_bkg)*Eb, v)*self.dx_dom + eval(F_antennas_str) ## background field and antenna terms
-        
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
         petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## try looking this up to see if some other options might be better (apparently it is hard to find iterative solvers that converge)
@@ -328,9 +326,11 @@ class Scatt3DProblem():
                     '''
                     E_pw = np.zeros((3, x.shape[1]), dtype=complex)
                     if(self.excitation == 'planewave'): # only make an excitation if we actually want one
-                        E0 = self.PW_pol ## just use the same amplitude as the polarization has
+                        E_pw[0, :] = self.PW_pol[0] ## just use the same amplitude as the polarization has
+                        E_pw[1, :] = self.PW_pol[1] ## just use the same amplitude as the polarization has
+                        E_pw[2, :] = self.PW_pol[2] ## just use the same amplitude as the polarization has
                         k_pw = k0*self.PW_dir ## direction (should be given normalized)
-                        E_pw = E0*np.exp(-1j*np.dot(k_pw, x))
+                        E_pw[:] = E_pw[:]*np.exp(-1j*np.dot(k_pw, x))
                     return E_pw
                 
                 Eb.interpolate(lambda x: planeWave(x))
@@ -424,7 +424,7 @@ class Scatt3DProblem():
         self.epsr.x.array[:] = self.epsr_array_dut
         xdmf.write_function(self.epsr, -1)
         for nf in range(self.Nf):
-            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) and (mesh.N_antennas > 0) ):
                 print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                 sys.stdout.flush()
             k0 = 2*np.pi*self.fvec[nf]/c0
@@ -438,6 +438,9 @@ class Scatt3DProblem():
                     q.interpolate(functools.partial(q_func, Em=Em_ref, En=En, k0=k0))
                     # The function q is one row in the A-matrix, save it to file
                     xdmf.write_function(q, nf*mesh.N_antennas*mesh.N_antennas + m*mesh.N_antennas + n)
+            if(mesh.N_antennas < 1): # if no antennas, still save
+                q.interpolate(functools.partial(q_func, Em=self.solutions_ref[nf][0], En=self.solutions_ref[nf][0], k0=k0))
+                xdmf.write_function(q, nf)
         xdmf.close()
     
     def saveEFieldsForAnim(self, Nframes = 50):
@@ -446,18 +449,19 @@ class Scatt3DProblem():
         Uses the reference mesh and fields.
         '''
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
-        E = dolfinx.fem.Function(self.Wspace)
+        E = dolfinx.fem.Function(self.Vspace)
         bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
-        def q_abs(x, E): ## similar to the one in makeOptVectors
+        def q_abs(x, Es): ## similar to the one in makeOptVectors
             cells = []
             cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
             colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
             for i, point in enumerate(x.T):
                 if len(colliding_cells.links(i)) > 0:
                     cells.append(colliding_cells.links(i)[0])
-            E_vals = E.eval(x.T, cells)
+            E_vals = Es.eval(x.T, cells)
             return E_vals
-        E.interpolate(functools.partial(q_abs, E=self.solutions_ref[0][0])) ## fields for the first frequency and antenna
+        sol = self.solutions_ref[0][0] ## fields for the first frequency
+        E.interpolate(functools.partial(q_abs, Es=sol)) 
         xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE.xdmf', file_mode='w')
         xdmf2.write_mesh(self.refMeshdata.mesh)
         for i in range(Nframes):
