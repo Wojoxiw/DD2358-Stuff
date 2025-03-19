@@ -344,7 +344,7 @@ class Scatt3DProblem():
                         E_pw[:] = E_pw[:]*np.exp(-1j*np.dot(k_pw, x))
                     return E_pw
                 
-                Eb.interpolate(lambda x: planeWave(x))
+                Eb.interpolate(planeWave)
                 sols = []
                 
                 if(mesh.N_antennas == 0): ## if no antennas:
