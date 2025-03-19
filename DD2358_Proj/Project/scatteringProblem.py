@@ -449,24 +449,31 @@ class Scatt3DProblem():
         Uses the reference mesh and fields.
         '''
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
-        E = dolfinx.fem.Function(self.Vspace)
+        E = dolfinx.fem.Function(self.Wspace)
         bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
-        def q_abs(x, Es): ## similar to the one in makeOptVectors
+        def q_abs(x, Es, pol = 'z'): ## similar to the one in makeOptVectors
             cells = []
             cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
             colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
             for i, point in enumerate(x.T):
                 if len(colliding_cells.links(i)) > 0:
                     cells.append(colliding_cells.links(i)[0])
-            E_vals = Es.eval(x.T, cells)
+            if(pol == 'z'): ## it is not simple to save the vector itself for some reason...
+                E_vals = Es.eval(x.T, cells)[:, 2]
+            elif(pol == 'x'):
+                E_vals = Es.eval(x.T, cells)[:, 0]
+            elif(pol == 'y'):
+                E_vals = Es.eval(x.T, cells)[:, 1]
             return E_vals
+        pols = ['x', 'y', 'z']
         sol = self.solutions_ref[0][0] ## fields for the first frequency
-        E.interpolate(functools.partial(q_abs, Es=sol)) 
-        xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE.xdmf', file_mode='w')
-        xdmf2.write_mesh(self.refMeshdata.mesh)
-        for i in range(Nframes):
-            E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
-            xdmf2.write_function(E, i)
+        for pol in pols:
+            xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
+            E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
+            xdmf2.write_mesh(self.refMeshdata.mesh)
+            for i in range(Nframes):
+                E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
+                xdmf2.write_function(E, i)
         xdmf2.close()
             
     def calcFarField(self, reference, angles = np.array([90, 180])):
@@ -484,13 +491,13 @@ class Scatt3DProblem():
             sols = self.solutions_dut
             
         numAngles = np.shape(angles)[0]
-        prefactor = dolfinx.fem.Constant(mesh, 0j)
+        prefactor = dolfinx.fem.Constant(mesh.mesh, 0j)
         n = ufl.FacetNormal(mesh.mesh)('+') ## normal direction, hopefully ('+') means outward
         #nx = n[0]('+') ## not sure how this works. hopefully it does...
         #ny = n[1]('+')
         #nz = n[2]('+')
         x, y, z = ufl.SpatialCoordinate(mesh.mesh)
-        signfactor = ufl.sign(ufl.inner(n, [x, y, z])) # Enforce outward pointing normal
+        signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(mesh.mesh))) # Enforce outward pointing normal
         
         ScalarSpace = dolfinx.fem.functionspace(mesh.mesh, ('CG', self.fem_degree))
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
