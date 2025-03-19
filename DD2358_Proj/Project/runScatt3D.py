@@ -63,7 +63,7 @@ if __name__ == '__main__':
     sys.stdout.flush()
     
     def profilingMemsTimes(): ## as used to make plots for the report
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = '8nodes3MPI1threads.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = '8nodes24MPI1threads.npz') ## make sure to change to filename so it doesn't get overwritten - the data is stored here
         numRuns = 1 ## run these 10 times to find averages/stds
         hs = [1/10, 1/11, 1/12, 1/13, 1/14, 1/15, 1/16, 1/17, 1/18, 1/19, 1/20] ## run it for different mesh sizes
         for i in range(numRuns):
@@ -74,7 +74,7 @@ if __name__ == '__main__':
             for h in hs:
                 refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h)
                 prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
-                prevRuns.memTimeAppend(prob, '8nodes3MPI1threads')
+                prevRuns.memTimeAppend(prob, '8nodes24MPI1threads')
     
     def actualProfilerRunning(): # Here I call more things explicitly in order to more easily profile the code in separate methods (profiling activated in the methods themselves also).
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/12) ## this will have around 190000 elements
