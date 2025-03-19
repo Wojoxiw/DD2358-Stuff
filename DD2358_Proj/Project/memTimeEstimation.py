@@ -145,7 +145,7 @@ class runTimesMems():
         '''
         binVals = [109624, 143465, 189130, 233557, 290155, 355864, 430880, 512558, 609766, 707748, 825148] ## the size-values (# elements) that were used for calculations
         MPInums = [1, 1, 12, 24] ## MPInum of runs to plot
-        runType = [[1, 'noOMPNUMTHREADS'], [0, 'bindtocore'], [12, '2threads'], [1, '2nodes1MPInothreads'], [2, '2nodes2MPI12threads'],  [1, ''], [12, ''], [24, '']] ## MPInum + extraInfo of runs to plot. If zero, allows any
+        runType = [[3, '8nodesBTCMPInothreads'], [1, '8nodes1MPInothreads.npz'], [1, 'noOMPNUMTHREADS'], [0, 'bindtocore'], [12, '2threads'], [1, '2nodes1MPInothreads'], [2, '2nodes2MPI12threads'],  [1, ''], [12, ''], [24, '']] ## MPInum + extraInfo of runs to plot. If zero, allows any
         
         if(self.comm.rank == 0):
             numRuns = len(self.prevRuns)
@@ -218,6 +218,12 @@ class runTimesMems():
                 elif(exInfo == '2nodes2MPI12threads'):
                     label = '12 MPI processes, 1 thread, 2 nodes'
                     linestyle = ':'
+                elif(exInfo == '8nodes1MPInothreads.npz'):
+                    label = '1 MPI Process, no threads, 8 nodes'
+                    linestyle = '--'
+                elif(exInfo == '8nodesBTCMPInothreads'):
+                    label = 'BTC MPI Processes, no threads, 8 nodes'
+                    linestyle = '--'
                 elif(MPInum == 1):
                     label = f'{MPInum} MPI Process'
                 else:
