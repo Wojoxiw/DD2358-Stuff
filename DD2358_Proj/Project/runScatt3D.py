@@ -6,7 +6,9 @@
 # Alexandros Pallaris, after that
 
 import os
-#os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
+os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
+os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
+os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
 from mpi4py import MPI
 import numpy as np
 import dolfinx, ufl, basix
