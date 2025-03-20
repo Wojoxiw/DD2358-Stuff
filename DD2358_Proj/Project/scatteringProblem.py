@@ -2,7 +2,7 @@
 ## this file makes the mesh
 
 import os ## presumably dont need this import here
-os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
+#os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
 from mpi4py import MPI
 import numpy as np
 import dolfinx
@@ -508,10 +508,8 @@ class Scatt3DProblem():
         #nx = n[0]('+') ## not sure how this works. hopefully it does...
         #ny = n[1]('+')
         #nz = n[2]('+')
-        x, y, z = ufl.SpatialCoordinate(mesh.mesh)
         signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(mesh.mesh))) # Enforce outward pointing normal
         
-        ScalarSpace = dolfinx.fem.functionspace(mesh.mesh, ('CG', self.fem_degree))
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
         
         farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
