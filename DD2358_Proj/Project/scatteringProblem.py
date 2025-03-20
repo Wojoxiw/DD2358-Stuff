@@ -325,11 +325,14 @@ class Scatt3DProblem():
                     print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                     sys.stdout.flush()
                 print(self.comm.rank, 'calculating pml fields')
+                sys.stdout.flush()
                 k0 = 2*np.pi*self.fvec[nf]/c0
                 k00.value = k0
                 print(self.comm.rank,'222')
+                sys.stdout.flush()
                 Zrel.value = k00.value/np.sqrt(k00.value**2 - mesh.kc**2)
                 print(self.comm.rank, 'calculating pml fields')
+                sys.stdout.flush()
                 self.CalculatePML(mesh, k0)  ## update PML to this freq.
                 
                 def planeWave(x):
