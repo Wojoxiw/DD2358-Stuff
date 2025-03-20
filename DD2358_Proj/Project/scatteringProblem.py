@@ -346,7 +346,7 @@ class Scatt3DProblem():
                 Eb.interpolate(planeWave)
                 sols = []
                 print('there are antennas2')
-                    sys.stdout.flush()
+                sys.stdout.flush()
                 
                 if(mesh.N_antennas == 0): ## if no antennas:
                     E_h = problem.solve()
