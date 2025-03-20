@@ -318,17 +318,18 @@ class Scatt3DProblem():
             Computes the fields. There are two cases: one with antennas, and one without (PW excitation)
             Returns solutions, a list of Es for each frequency and exciting antenna, and S (0 if no antennas), a list of S-parameters for each frequency, exciting antenna, and receiving antenna
             '''
-            print('compute fields')
             S = np.zeros((self.Nf, mesh.N_antennas, mesh.N_antennas), dtype=complex)
             solutions = []
             for nf in range(self.Nf):
                 if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
                     print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                     sys.stdout.flush()
+                print(self.comm.rank, 'calculating pml fields')
                 k0 = 2*np.pi*self.fvec[nf]/c0
                 k00.value = k0
+                print(self.comm.rank,'222')
                 Zrel.value = k00.value/np.sqrt(k00.value**2 - mesh.kc**2)
-                print('calculating pml fields')
+                print(self.comm.rank, 'calculating pml fields')
                 self.CalculatePML(mesh, k0)  ## update PML to this freq.
                 
                 def planeWave(x):
