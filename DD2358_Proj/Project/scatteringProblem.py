@@ -324,15 +324,9 @@ class Scatt3DProblem():
                 if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
                     print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                     sys.stdout.flush()
-                print(self.comm.rank, 'calculating pml fields')
-                sys.stdout.flush()
                 k0 = 2*np.pi*self.fvec[nf]/c0
                 k00.value = k0
-                print(self.comm.rank,'222')
-                sys.stdout.flush()
                 Zrel.value = k00.value/np.sqrt(k00.value**2 - mesh.kc**2)
-                print(self.comm.rank, 'calculating pml fields')
-                sys.stdout.flush()
                 self.CalculatePML(mesh, k0)  ## update PML to this freq.
                 
                 def planeWave(x):
@@ -351,17 +345,21 @@ class Scatt3DProblem():
                 
                 Eb.interpolate(planeWave)
                 sols = []
+                print('there are antennas2')
+                    sys.stdout.flush()
                 
                 if(mesh.N_antennas == 0): ## if no antennas:
                     E_h = problem.solve()
                     sols.append(E_h.copy())
                 else:
                     print('there are antennas')
+                    sys.stdout.flush()
                     for n in range(mesh.N_antennas):
                         for m in range(mesh.N_antennas):
                             a[m].value = 0.0
                         a[n].value = 1.0
                         print('running problem.solve:::...')
+                        sys.stdout.flush()
                         E_h = problem.solve()
                         for m in range(mesh.N_antennas):
                             factor = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(2*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m]))
