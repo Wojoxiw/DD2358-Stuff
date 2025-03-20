@@ -356,6 +356,7 @@ class Scatt3DProblem():
                         for m in range(mesh.N_antennas):
                             a[m].value = 0.0
                         a[n].value = 1.0
+                        print('running problem.solve:::...')
                         E_h = problem.solve()
                         for m in range(mesh.N_antennas):
                             factor = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(2*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m]))
