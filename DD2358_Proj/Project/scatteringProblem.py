@@ -116,10 +116,6 @@ class Scatt3DProblem():
         Sets up and runs the simulation. All the setup is set to reflect the current mesh, reference or dut. Solutions are saved.
         :param computeRef: If True, computes on the reference mesh
         '''
-        if (self.comm.rank == self.model_rank and self.verbosity>0):
-            estmem, esttime = memTimeEstimation.memTimeEstimation(self.refMeshdata.ncells)
-            print(f'Estimated memory requirement for size {self.refMeshdata.ncells:.3e}: {estmem:.3f} GB')
-            print(f'Estimated computation time for size {self.refMeshdata.ncells:.3e}, Nf = {self.Nf}: {esttime/3600:.3f} hours')
         t1 = timer()
         if(computeRef):
             mesh = self.refMeshdata

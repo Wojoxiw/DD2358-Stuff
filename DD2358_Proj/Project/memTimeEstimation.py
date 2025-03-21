@@ -106,17 +106,24 @@ class runTimesMems():
         ## Assume memory cost scales just by problem size
         self.memFit = scipy.optimize.curve_fit(self.fitLine, self.sizes, self.mems)[0]
           
-    def memTimeEstimation(self, size, Nf = 1, Nants = 1, MPInum = 1):
+    def memTimeEstimation(self, size, Nf = 1, Nants = 1, MPInum = 1, doPrint = True):
         '''
         Returns an estimate of the memory and time requirements for a simulation, assuming some kind of polynomial dependence.
         :param size: Number of FEM elements
         :param Nf: Number of frequency points
         :param Nants: Number of antennas
         :param MPInum: Number of MPI processes, not used for time estimation since there is dependence on the number of threads and cores/nodes, etc. also
+        :param doPrint: If True, prints the estimates
         '''
         if(Nants == 0):
             Nants = 1 ## the simulation should always run through problem.solve at least once
-        return 1, 1
+        
+        estmem, esttime = 1, 1
+        
+        if (self.comm.rank == 0 and doPrint):
+            print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
+            print(f'Estimated computation time for size {size:.3e}, Nf = {Nf}: {esttime/3600:.3f} hours')
+        return estmem, esttime
             
     def makePlots(self):
         if(self.comm.rank == 0):
