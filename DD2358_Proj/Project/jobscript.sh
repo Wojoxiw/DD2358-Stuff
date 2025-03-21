@@ -11,11 +11,14 @@
 #SBATCH -J again ##puts a job name, to identify it
 
 cat $0 ## unix command - outputs this script to the top of the job's output file
-
-echo "\n""\nhello from $HOSTNAME:" $HOSTNAME ## some unix script
+echo ## maybe makes a newline?
+echo ## maybe makes a newline?
+free -h ## print available memory, just to check
+echo ## maybe makes a newline?
+echo "hello from $HOSTNAME:" $HOSTNAME ## some unix script. Not sure how to print newline...
 echo "jobscript listed above, date listed below..."
 date ## prints current date/time
 
 ## if not using node-local disk, just run it and hopefully this is fine
-#time mpirun -n 1 python runScatt3D.py ## run the main process, and time it
-time mpirun --bind-to core python runScatt3D.py
+time mpirun -n 4 python runScatt3D.py ## run the main process, and time it
+#time mpirun --bind-to core python runScatt3D.py

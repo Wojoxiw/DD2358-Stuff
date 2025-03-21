@@ -116,7 +116,8 @@ class runTimesMems():
         '''
         if(Nants == 0):
             Nants = 1 ## the simulation should always run through problem.solve at least once
-    
+        return 1, 1
+            
     def makePlots(self):
         if(self.comm.rank == 0):
             self.calcStats()
