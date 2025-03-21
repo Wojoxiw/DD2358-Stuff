@@ -14,6 +14,7 @@ cat $0 ## unix command - outputs this script to the top of the job's output file
 echo ## maybe makes a newline?
 echo ## maybe makes a newline?
 free -h ## print available memory, just to check
+awk '/MemFree/ { printf "%.3f \n", $2/1024/1024 }' /proc/meminfo
 echo ## maybe makes a newline?
 echo "hello from $HOSTNAME:" $HOSTNAME ## some unix script. Not sure how to print newline...
 echo "jobscript listed above, date listed below..."
