@@ -14,6 +14,7 @@ import gmsh
 import sys
 import pyvista
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
+import memTimeEstimation
 eta0 = np.sqrt(mu0/eps0)
 
 #===============================================================================
@@ -115,6 +116,10 @@ class Scatt3DProblem():
         Sets up and runs the simulation. All the setup is set to reflect the current mesh, reference or dut. Solutions are saved.
         :param computeRef: If True, computes on the reference mesh
         '''
+        if (self.comm.rank == self.model_rank and self.verbosity>0):
+            estmem, esttime = memTimeEstimation.memTimeEstimation(self.refMeshdata.ncells)
+            print(f'Estimated memory requirement for size {self.refMeshdata.ncells:.3e}: {estmem:.3f} GB')
+            print(f'Estimated computation time for size {self.refMeshdata.ncells:.3e}, Nf = {self.Nf}: {esttime/3600:.3f} hours')
         t1 = timer()
         if(computeRef):
             mesh = self.refMeshdata
@@ -345,21 +350,14 @@ class Scatt3DProblem():
                 
                 Eb.interpolate(planeWave)
                 sols = []
-                print('there are antennas2')
-                sys.stdout.flush()
-                
                 if(mesh.N_antennas == 0): ## if no antennas:
                     E_h = problem.solve()
                     sols.append(E_h.copy())
                 else:
-                    print('there are antennas')
-                    sys.stdout.flush()
                     for n in range(mesh.N_antennas):
                         for m in range(mesh.N_antennas):
                             a[m].value = 0.0
                         a[n].value = 1.0
-                        print('running problem.solve:::...')
-                        sys.stdout.flush()
                         E_h = problem.solve()
                         for m in range(mesh.N_antennas):
                             factor = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(2*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m]))
