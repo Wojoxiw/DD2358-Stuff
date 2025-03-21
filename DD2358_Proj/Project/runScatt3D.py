@@ -62,7 +62,7 @@ if __name__ == '__main__':
     if(comm.rank == model_rank):
         print('Expected number of MPI processes:', MPInum)
         print('Scatt3D start:')
-        print(psutil.virtual_memory().total / 1024**3, 'GB of available RAM')
+        #print(psutil.virtual_memory().total / 1024**3, 'GB of available RAM')
     sys.stdout.flush()
     
     def profilingMemsTimes(): ## as used to make plots for the report
@@ -80,7 +80,7 @@ if __name__ == '__main__':
                 prevRuns.memTimeAppend(prob, '8nodes24MPI1threads2b')
     
     def actualProfilerRunning(): # Here I call more things explicitly in order to more easily profile the code in separate methods (profiling activated in the methods themselves also).
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/12) ## this will have around 190000 elements
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/10) ## this will have around 190000 elements
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
             
     def testRun():
