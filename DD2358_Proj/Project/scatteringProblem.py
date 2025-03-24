@@ -478,13 +478,13 @@ class Scatt3DProblem():
         pols = ['x', 'y', 'z']
         sol = self.solutions_ref[0][0] ## fields for the first frequency
         for pol in pols:
-            xdmf2 = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
+            xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
             E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
-            xdmf2.write_mesh(self.refMeshdata.mesh)
+            xdmf.write_mesh(self.refMeshdata.mesh)
             for i in range(Nframes):
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
-                xdmf2.write_function(E, i)
-        xdmf2.close()
+                xdmf.write_function(E, i)
+        xdmf.close()
             
     def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]])):
         '''
