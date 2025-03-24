@@ -6,9 +6,9 @@
 # Alexandros Pallaris, after that
 
 import os
-os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
-os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
-os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
+#os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
+#os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
+#os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
 from mpi4py import MPI
 import numpy as np
 import dolfinx, ufl, basix
@@ -58,7 +58,7 @@ if __name__ == '__main__':
     runName = 'test' # testing
     folder = 'data3D/'
     
-    print(f"{comm.rank=} {comm.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}")
+    print(f"{comm.rank=} {comm.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
     if(comm.rank == model_rank):
         print('Expected number of MPI processes:', MPInum)
         print('Scatt3D start:')
@@ -86,8 +86,8 @@ if __name__ == '__main__':
     def testRun():
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         #prevRuns.makePlots()
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/13.5)
-        prevRuns.memTimeEstimation(refMesh.ncells)
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/10.5)
+        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
         #prob.saveEFieldsForAnim()
