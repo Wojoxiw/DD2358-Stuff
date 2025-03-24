@@ -55,7 +55,7 @@ if __name__ == '__main__':
     verbosity = 1
     MPInum = comm.size
     
-    runName = 'eucaph25' # testing
+    runName = 'eucaph25sphere' # testing
     folder = 'data3D/'
     
     print(f"{comm.rank=} {comm.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
@@ -86,7 +86,7 @@ if __name__ == '__main__':
     def testRun():
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         #prevRuns.makePlots()
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/25)
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/25, domain_geom='sphere')
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName)
