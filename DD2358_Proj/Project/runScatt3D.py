@@ -55,7 +55,7 @@ if __name__ == '__main__':
     verbosity = 1
     MPInum = comm.size
     
-    runName = 'eucaph25sphere' # testing
+    runName = 'testRun' # testing
     folder = 'data3D/'
     
     print(f"{comm.rank=} {comm.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
@@ -86,7 +86,8 @@ if __name__ == '__main__':
     def testRun():
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         #prevRuns.makePlots()
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/25, domain_geom='sphere')
+        #prevRuns.makePlots()
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/25)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName)
@@ -95,11 +96,13 @@ if __name__ == '__main__':
         
     def testFarField(): ## run a spherica domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, h=1/15, domain_geom='sphere', FF_surface = True)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', defect_epsr = 1)
-        prob.saveEFieldsForAnim()
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, h=1/10, domain_geom='sphere', FF_surface = True)
+        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
+        freqs = np.linspace(8e9, 12e9, 2)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', freqs = freqs)
+        #prob.saveEFieldsForAnim()
         angles = np.array([[90, 180], [90, 0]])
-        prob.calcFarField(reference=True, angles = angles)
+        prob.calcFarField(reference=True, angles = angles, compareToMie = True)
     
     
     testRun()

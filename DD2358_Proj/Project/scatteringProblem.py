@@ -7,6 +7,7 @@ import dolfinx
 import ufl
 import basix
 import functools
+import miepython
 from timeit import default_timer as timer
 import psutil
 from memory_profiler import memory_usage
@@ -15,6 +16,7 @@ import sys
 import pyvista
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 import memTimeEstimation
+from matplotlib import pyplot as plt
 eta0 = np.sqrt(mu0/eps0)
 
 #===============================================================================
@@ -146,15 +148,13 @@ class Scatt3DProblem():
         curl_element = basix.ufl.element('N1curl', meshData.mesh.basix_cell(), self.fem_degree)
         self.Vspace = dolfinx.fem.functionspace(meshData.mesh, curl_element)
         self.ScalarSpace = dolfinx.fem.functionspace(meshData.mesh, ('CG', self.fem_degree))
-        
+        self.Wspace = dolfinx.fem.functionspace(mesh.mesh, ("DG", 0))
         # Create measures for subdomains and surfaces
         self.dx = ufl.Measure('dx', domain=meshData.mesh, subdomain_data=meshData.subdomains, metadata={'quadrature_degree': 5})
         self.dx_dom = self.dx((meshData.domain_marker, meshData.mat_marker, meshData.defect_marker))
         self.dx_pml = self.dx(meshData.pml_marker)
         self.ds = ufl.Measure('ds', domain=meshData.mesh, subdomain_data=meshData.boundaries)
         self.dS = ufl.Measure('dS', domain=meshData.mesh, subdomain_data=meshData.boundaries) ## capital S for outer boundaries?
-        if(meshData.FF_surface):
-            dS_farfield = self.dS(meshData.farfield_surface_marker)
         self.ds_antennas = [self.ds(m) for m in meshData.antenna_surface_markers]
         self.ds_pec = self.ds(meshData.pec_surface_marker)
         self.Ezero = dolfinx.fem.Function(self.Vspace)
@@ -175,7 +175,6 @@ class Scatt3DProblem():
         
     def InitializeMaterial(self, mesh):
         # Set up material parameters. Not chancing mur for now, need to edit this if doing so
-        self.Wspace = dolfinx.fem.functionspace(mesh.mesh, ("DG", 0))
         self.epsr = dolfinx.fem.Function(self.Wspace)
         self.mur = dolfinx.fem.Function(self.Wspace)
         self.epsr.x.array[:] = self.epsr_bkg
@@ -459,7 +458,7 @@ class Scatt3DProblem():
         Uses the reference mesh and fields.
         '''
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
-        E = dolfinx.fem.Function(self.Wspace)
+        E = dolfinx.fem.Function(self.ScalarSpace)
         bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
         def q_abs(x, Es, pol = 'z'): ## similar to the one in makeOptVectors
             cells = []
@@ -486,12 +485,13 @@ class Scatt3DProblem():
                 xdmf.write_function(E, i)
         xdmf.close()
             
-    def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]])):
+    def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False):
         '''
         Calculates the farfield at each frequency point at at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True
         Returns an array of [E_theta, E_phi] at each angle
         :param reference: Whether this is being computed for the DUT case or the reference
         :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0)
+        :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
         '''
         if(reference):
             mesh = self.refMeshdata
@@ -507,9 +507,7 @@ class Scatt3DProblem():
         #ny = n[1]('+')
         #nz = n[2]('+')
         signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(mesh.mesh))) # Enforce outward pointing normal
-        
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
-        
         farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
         for b in range(self.Nf):
             freq = self.fvec[b]
@@ -529,9 +527,13 @@ class Scatt3DProblem():
                 ## can only integrate scalars
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 self.F_phi = signfactor*prefactor* ufl.inner( phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-         
+                
+                #self.F_theta = 1*self.dS_farfield ## calculate area
+                #self.F_phi = 1*self.dS_farfield ## calculate area
+                
+                khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
                 def evalFs(): ## evaluates the farfield in some given direction khat
-                    exp_kr.interpolate(lambda x: np.exp(1j*k*np.dot(khat, x)), self.farfield_cells)
+                    exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
                     prefactor.value = 1j*k/(4*pi)
                     
                     F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
@@ -539,5 +541,24 @@ class Scatt3DProblem():
                     return(F_theta, F_phi)
                 
                 farfields[b, i] = evalFs()
+        if(compareToMie):
+            ##Calculate Mie scattering
+            lambdas = c0/self.fvec
+            x = 2*pi/mesh.object_radius/lambdas
+            m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+            phis = angles[:, 1] ## the phi angles for me - since i_par is for scattering in the plane
+            qext, qsca, qback, g = miepython.i_par(m, x, norm='qsca')
+            
+            
+            
+            for i in range(len(angles)):
+                plt.ylabel('Frequency [GHz]')
+                plt.plot(self.fvec/1e9, np.abs(farfields[:, i, 0])**2 + np.abs(farfields[:, i, 1])**2, label = r'sim, $\theta=$'+f'{angles[i, 0]:.0f}, $\phi={angles[i, 1]:.0f}$')
+                
+                #plt.plot(self.fvec/1e9, 4*pi*mesh.FF_surface_radius**2*np.ones_like(self.fvec), label = r'theo, area of sphere') ## theoretical area of a sphere
+                plt.legend()
+                plt.grid()
+                plt.tight_layout()
+                plt.show()
             
         return farfields

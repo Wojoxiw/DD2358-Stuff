@@ -203,7 +203,7 @@ class MeshData():
                     gmsh.model.occ.rotate([(self.tdim, defect1)], 0, 0, 0, 0, 1, 0, self.defect_angles[1])
                     gmsh.model.occ.rotate([(self.tdim, defect1)], 0, 0, 0, 0, 0, 1, self.defect_angles[2])
                     defectDimTags.append((self.tdim, defect1))
-             
+            
             ## Make the domain and the PML
             if(self.domain_geom == 'domedCyl'):
                 domain_cyl = gmsh.model.occ.addCylinder(0, 0, -self.domain_height/2, 0, 0, self.domain_height, self.domain_radius)
@@ -230,21 +230,22 @@ class MeshData():
                 pml = gmsh.model.occ.addSphere(0, 0, 0, self.PML_radius)
                 domain = [(self.tdim, domain)] # needs to be dim, tags
                 pml = [(self.tdim, pml)] # needs to be dim, tags
+            FF_surface_dimTags = []
             if(self.FF_surface):
                 FF_c = np.array([0, 0, self.h/10]) ## the centre of this should be displaced slightly off-center so it can be found by its Centre of Mass... there must be a better way
                 FF_surface = gmsh.model.occ.addSphere(FF_c[0], FF_c[1], FF_c[2], self.FF_surface_radius)
                 inFF_surface = lambda x: np.allclose(x, FF_c)
-                #domain.append((self.tdim, FF_surface)) ## this surface is part of the material
-                domain = gmsh.model.occ.fuse([(self.tdim, FF_surface)], domain)[0] ## this surface is part of the domain
+                FF_surface_dimTags = [(self.tdim, FF_surface)]
             
             # Create fragments and dimtags
-            outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + antennas_DimTags)
+            outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + FF_surface_dimTags + defectDimTags + antennas_DimTags)
+            removeDimTags = [] ## remove these surfaces for later addition to PEC or FF surfaces
             if(self.N_antennas > 0):
                 removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-self.N_antennas:]]]
-            else:
-                removeDimTags = []
-            defectDimTags = [x[0] for x in outDimTagsMap[3:] if x[0] not in removeDimTags]
+            defectDimTags = [x[0] for x in outDimTagsMap[4:] if x[0] not in removeDimTags]
             matDimTags = [x for x in outDimTagsMap[2] if x not in defectDimTags]
+            if(self.FF_surface):
+                matDimTags = matDimTags #+ FF_surface_dimTags
             domainDimTags = [x for x in outDimTagsMap[1] if x not in removeDimTags+matDimTags+defectDimTags]
             pmlDimTags = [x for x in outDimTagsMap[0] if x not in domainDimTags+defectDimTags+matDimTags+removeDimTags]
             gmsh.model.occ.remove(removeDimTags)
