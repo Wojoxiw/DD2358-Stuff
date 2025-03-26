@@ -148,7 +148,7 @@ class Scatt3DProblem():
         curl_element = basix.ufl.element('N1curl', meshData.mesh.basix_cell(), self.fem_degree)
         self.Vspace = dolfinx.fem.functionspace(meshData.mesh, curl_element)
         self.ScalarSpace = dolfinx.fem.functionspace(meshData.mesh, ('CG', self.fem_degree))
-        self.Wspace = dolfinx.fem.functionspace(mesh.mesh, ("DG", 0))
+        self.Wspace = dolfinx.fem.functionspace(meshData.mesh, ("DG", 0))
         # Create measures for subdomains and surfaces
         self.dx = ufl.Measure('dx', domain=meshData.mesh, subdomain_data=meshData.subdomains, metadata={'quadrature_degree': 5})
         self.dx_dom = self.dx((meshData.domain_marker, meshData.mat_marker, meshData.defect_marker))
@@ -173,15 +173,15 @@ class Scatt3DProblem():
             cells.sort()
             self.farfield_cells = np.array(cells)
         
-    def InitializeMaterial(self, mesh):
+    def InitializeMaterial(self, meshData):
         # Set up material parameters. Not chancing mur for now, need to edit this if doing so
         self.epsr = dolfinx.fem.Function(self.Wspace)
         self.mur = dolfinx.fem.Function(self.Wspace)
         self.epsr.x.array[:] = self.epsr_bkg
         self.mur.x.array[:] = self.mur_bkg
-        mat_cells = mesh.subdomains.find(mesh.mat_marker)
+        mat_cells = meshData.subdomains.find(meshData.mat_marker)
         mat_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=mat_cells)
-        defect_cells = mesh.subdomains.find(mesh.defect_marker)
+        defect_cells = meshData.subdomains.find(meshData.defect_marker)
         defect_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=defect_cells)
         self.epsr.x.array[mat_dofs] = self.material_epsr
         self.mur.x.array[mat_dofs] = self.material_mur
