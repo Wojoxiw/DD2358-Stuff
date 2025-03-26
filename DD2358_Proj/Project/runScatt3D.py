@@ -98,10 +98,13 @@ if __name__ == '__main__':
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, h=1/10, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
-        freqs = np.linspace(8e9, 12e9, 2)
+        freqs = np.linspace(8e9, 12e9, 3)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', freqs = freqs)
         #prob.saveEFieldsForAnim()
-        angles = np.array([[90, 180], [90, 0]])
+        nvals = 30
+        angles = np.zeros((nvals, 2))
+        angles[:, 0] = 90
+        angles[:, 1] = np.linspace(0, 360, nvals)
         prob.calcFarField(reference=True, angles = angles, compareToMie = True)
     
     

@@ -192,7 +192,7 @@ class Scatt3DProblem():
         self.mur.x.array[defect_dofs] = self.defect_mur
         self.epsr_array_dut = self.epsr.x.array.copy()
         
-    def CalculatePML(self, mesh, k):
+    def CalculatePML(self, meshData, k):
         '''
         Set up the PML - stretched coordinates to form a perfectly-matched layer which absorbs incoming (perpendicular) waves
          Since we calculate at many frequencies, recalculate this for each freq. (Could also precalc it for each freq...)
@@ -224,32 +224,32 @@ class Scatt3DProblem():
             murinv_pml = ufl.inv(mur_pml)
             return epsr_pml, murinv_pml
         
-        x, y, z = ufl.SpatialCoordinate(mesh.mesh)
-        if(mesh.domain_geom == 'domedCyl'): ## implement it for this geometry
+        x, y, z = ufl.SpatialCoordinate(meshData.mesh)
+        if(meshData.domain_geom == 'domedCyl'): ## implement it for this geometry
             r = ufl.real(ufl.sqrt(x**2 + y**2)) ## cylindrical radius. need to set this to real because I compare against it later
-            domain_height_spheroid = ufl.conditional(ufl.ge(r, mesh.domain_radius), mesh.domain_height/2, (mesh.domain_height/2+mesh.dome_height)*ufl.real(ufl.sqrt(1-(r/(mesh.domain_radius+mesh.domain_spheroid_extraRadius))**2)))   ##start the z-stretching at, at minmum, the height of the domain cylinder
-            PML_height_spheroid = (mesh.PML_height/2+mesh.dome_height)*ufl.sqrt(1-(r/(mesh.PML_radius+mesh.PML_spheroid_extraRadius))**2) ##should always be ge the pml cylinder's height
-            x_stretched = pml_stretch(x, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
-            y_stretched = pml_stretch(y, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
+            domain_height_spheroid = ufl.conditional(ufl.ge(r, meshData.domain_radius), meshData.domain_height/2, (meshData.domain_height/2+meshData.dome_height)*ufl.real(ufl.sqrt(1-(r/(meshData.domain_radius+meshData.domain_spheroid_extraRadius))**2)))   ##start the z-stretching at, at minmum, the height of the domain cylinder
+            PML_height_spheroid = (meshData.PML_height/2+meshData.dome_height)*ufl.sqrt(1-(r/(meshData.PML_radius+meshData.PML_spheroid_extraRadius))**2) ##should always be ge the pml cylinder's height
+            x_stretched = pml_stretch(x, r, k, x_dom=meshData.domain_radius, x_pml=meshData.PML_radius)
+            y_stretched = pml_stretch(y, r, k, x_dom=meshData.domain_radius, x_pml=meshData.PML_radius)
             z_stretched = pml_stretch(z, abs(z), k, x_dom=domain_height_spheroid, x_pml=PML_height_spheroid) ## /2 since the height is from - to +
-            x_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), x_stretched, x) ## stretch when outside radius of the domain
-            y_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), y_stretched, y) ## stretch when outside radius of the domain
+            x_pml = ufl.conditional(ufl.ge(abs(r), meshData.domain_radius), x_stretched, x) ## stretch when outside radius of the domain
+            y_pml = ufl.conditional(ufl.ge(abs(r), meshData.domain_radius), y_stretched, y) ## stretch when outside radius of the domain
             z_pml = ufl.conditional(ufl.ge(abs(z), domain_height_spheroid), z_stretched, z) ## stretch when outside the height of the cylinder of the domain (or oblate spheroid roof with factor a_dom/a_pml - should only be higher/lower inside the domain radially)
-        elif(mesh.domain_geom == 'sphere'):
+        elif(meshData.domain_geom == 'sphere'):
             r = ufl.real(ufl.sqrt(x**2 + y**2 + z**2))
-            x_stretched = pml_stretch(x, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
-            y_stretched = pml_stretch(y, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
-            z_stretched = pml_stretch(z, r, k, x_dom=mesh.domain_radius, x_pml=mesh.PML_radius)
-            x_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), x_stretched, x) ## stretch when outside radius of the domain
-            y_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), y_stretched, y) ## stretch when outside radius of the domain
-            z_pml = ufl.conditional(ufl.ge(abs(r), mesh.domain_radius), z_stretched, z) ## stretch when outside radius of the domain
+            x_stretched = pml_stretch(x, r, k, x_dom=meshData.domain_radius, x_pml=meshData.PML_radius)
+            y_stretched = pml_stretch(y, r, k, x_dom=meshData.domain_radius, x_pml=meshData.PML_radius)
+            z_stretched = pml_stretch(z, r, k, x_dom=meshData.domain_radius, x_pml=meshData.PML_radius)
+            x_pml = ufl.conditional(ufl.ge(abs(r), meshData.domain_radius), x_stretched, x) ## stretch when outside radius of the domain
+            y_pml = ufl.conditional(ufl.ge(abs(r), meshData.domain_radius), y_stretched, y) ## stretch when outside radius of the domain
+            z_pml = ufl.conditional(ufl.ge(abs(r), meshData.domain_radius), z_stretched, z) ## stretch when outside radius of the domain
         else:
-            print('nonvalid mesh.domain_geom')
+            print('nonvalid meshData.domain_geom')
         pml_coords = ufl.as_vector((x_pml, y_pml, z_pml))
         self.epsr_pml, self.murinv_pml = pml_epsr_murinv(pml_coords)
 
     #@profile
-    def ComputeSolutions(self, mesh, computeRef = True):
+    def ComputeSolutions(self, meshData, computeRef = True):
         '''
         Computes the solutions
         
@@ -262,26 +262,26 @@ class Scatt3DProblem():
             :param x: some given position you want to find the field on
             """
             Ep = np.zeros((3, x.shape[1]), dtype=complex)
-            for p in range(mesh.N_antennas):
-                center = mesh.pos_antennas[p]
-                phi = -mesh.rot_antennas[p] # Note rotation by the negative of antenna rotation
+            for p in range(meshData.N_antennas):
+                center = meshData.pos_antennas[p]
+                phi = -meshData.rot_antennas[p] # Note rotation by the negative of antenna rotation
                 Rmat = np.array([[np.cos(phi), -np.sin(phi), 0],
                                  [np.sin(phi), np.cos(phi), 0],
                                  [0, 0, 1]]) ## rotation around z
                 y = np.transpose(x.T - center)
                 loc_x = np.dot(Rmat, y) ### position vector, [x, y, z] presumably, rotated to be in the coordinates the antenna was defined in
                 if (self.antenna_pol == 'vert'): ## vertical (z-) pol, field varies along x
-                    Ep_loc = np.vstack((0*loc_x[0], 0*loc_x[0], np.cos(mesh.kc*loc_x[0])))/np.sqrt(mesh.antenna_width/2)
+                    Ep_loc = np.vstack((0*loc_x[0], 0*loc_x[0], np.cos(meshData.kc*loc_x[0])))/np.sqrt(meshData.antenna_width/2)
                 else: ## horizontal (x-) pol, field varies along z
-                    Ep_loc = np.vstack((np.cos(mesh.kc*loc_x[2])), 0*loc_x[2], 0*loc_x[2])/np.sqrt(mesh.antenna_height/2)
+                    Ep_loc = np.vstack((np.cos(meshData.kc*loc_x[2])), 0*loc_x[2], 0*loc_x[2])/np.sqrt(meshData.antenna_height/2)
                     
                 #simple, inexact confinement conditions
                 #Ep_loc[:,np.sqrt(loc_x[0]**2 + loc_x[1]**2) > antenna_width] = 0 ## no field outside of the antenna's width (circular)
                 ##if I confine it to just the 'empty face' of the waveguide thing. After testing, this seems to make no difference to just selecting the entire antenna via a sphere, with the above line
-                Ep_loc[:, np.abs(loc_x[0])  > mesh.antenna_width*.54] = 0 ## no field outside of the antenna's width
-                Ep_loc[:, np.abs(loc_x[1])  > mesh.antenna_depth*.04] = 0 ## no field outside of the antenna's depth - origin should be on this face - it is a face so no depth
+                Ep_loc[:, np.abs(loc_x[0])  > meshData.antenna_width*.54] = 0 ## no field outside of the antenna's width
+                Ep_loc[:, np.abs(loc_x[1])  > meshData.antenna_depth*.04] = 0 ## no field outside of the antenna's depth - origin should be on this face - it is a face so no depth
                 #for both
-                Ep_loc[:,np.abs(loc_x[2]) > mesh.antenna_height*.54] = 0 ## no field outside of the antenna's height.. plus a small extra (no idea if that matters)
+                Ep_loc[:,np.abs(loc_x[2]) > meshData.antenna_height*.54] = 0 ## no field outside of the antenna's height.. plus a small extra (no idea if that matters)
                 
                 Ep_global = np.dot(Rmat, Ep_loc)
                 Ep = Ep + Ep_global
@@ -296,12 +296,12 @@ class Scatt3DProblem():
         v = ufl.TestFunction(self.Vspace)
         curl_E = ufl.curl(E)
         curl_v = ufl.curl(v)
-        nvec = ufl.FacetNormal(mesh.mesh)
-        Zrel = dolfinx.fem.Constant(mesh.mesh, 1j)
-        k00 = dolfinx.fem.Constant(mesh.mesh, 1j)
-        a = [dolfinx.fem.Constant(mesh.mesh, 1.0 + 0j) for n in range(mesh.N_antennas)]
+        nvec = ufl.FacetNormal(meshData.mesh)
+        Zrel = dolfinx.fem.Constant(meshData.mesh, 1j)
+        k00 = dolfinx.fem.Constant(meshData.mesh, 1j)
+        a = [dolfinx.fem.Constant(meshData.mesh, 1.0 + 0j) for n in range(meshData.N_antennas)]
         F_antennas_str = '0' ## seems to give an error when evaluating an empty string
-        for n in range(mesh.N_antennas):
+        for n in range(meshData.N_antennas):
             F_antennas_str += f"""+ 1j*k00/Zrel*ufl.inner(ufl.cross(E, nvec), ufl.cross(v, nvec))*self.ds_antennas[{n}] - 1j*k00/Zrel*2*a[{n}]*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(v, nvec))*self.ds_antennas[{n}]"""
         F = ufl.inner(1/self.mur*curl_E, curl_v)*self.dx_dom \
             - ufl.inner(k00**2*self.epsr*E, v)*self.dx_dom \
@@ -318,7 +318,7 @@ class Scatt3DProblem():
             Computes the fields. There are two cases: one with antennas, and one without (PW excitation)
             Returns solutions, a list of Es for each frequency and exciting antenna, and S (0 if no antennas), a list of S-parameters for each frequency, exciting antenna, and receiving antenna
             '''
-            S = np.zeros((self.Nf, mesh.N_antennas, mesh.N_antennas), dtype=complex)
+            S = np.zeros((self.Nf, meshData.N_antennas, meshData.N_antennas), dtype=complex)
             solutions = []
             for nf in range(self.Nf):
                 if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
@@ -326,8 +326,8 @@ class Scatt3DProblem():
                     sys.stdout.flush()
                 k0 = 2*np.pi*self.fvec[nf]/c0
                 k00.value = k0
-                Zrel.value = k00.value/np.sqrt(k00.value**2 - mesh.kc**2)
-                self.CalculatePML(mesh, k0)  ## update PML to this freq.
+                Zrel.value = k00.value/np.sqrt(k00.value**2 - meshData.kc**2)
+                self.CalculatePML(meshData, k0)  ## update PML to this freq.
                 
                 def planeWave(x):
                     '''
@@ -345,16 +345,16 @@ class Scatt3DProblem():
                 
                 Eb.interpolate(planeWave)
                 sols = []
-                if(mesh.N_antennas == 0): ## if no antennas:
+                if(meshData.N_antennas == 0): ## if no antennas:
                     E_h = problem.solve()
                     sols.append(E_h.copy())
                 else:
-                    for n in range(mesh.N_antennas):
-                        for m in range(mesh.N_antennas):
+                    for n in range(meshData.N_antennas):
+                        for m in range(meshData.N_antennas):
                             a[m].value = 0.0
                         a[n].value = 1.0
                         E_h = problem.solve()
-                        for m in range(mesh.N_antennas):
+                        for m in range(meshData.N_antennas):
                             factor = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(2*ufl.sqrt(Zrel*eta0)*ufl.inner(ufl.cross(Ep, nvec), ufl.cross(Ep, nvec))*self.ds_antennas[m]))
                             factors = self.comm.gather(factor, root=self.model_rank)
                             if self.comm.rank == self.model_rank:
@@ -390,7 +390,7 @@ class Scatt3DProblem():
             self.S_dut, self.solutions_dut = ComputeFields()
             
     #@profile
-    def makeOptVectors(self, mesh):
+    def makeOptVectors(self, meshData):
         '''
         Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh
         '''
@@ -402,11 +402,11 @@ class Scatt3DProblem():
         
         # Create function space for temporary interpolation
         q = dolfinx.fem.Function(self.Wspace)
-        bb_tree = dolfinx.geometry.bb_tree(mesh.mesh, mesh.mesh.topology.dim)
+        bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
         cell_volumes = dolfinx.fem.assemble_vector(dolfinx.fem.form(ufl.conj(ufl.TestFunction(self.Wspace))*ufl.dx)).array
         def q_func(x, Em, En, k0):
             '''
-            Calculates the 'optimization vector' at each position in the reference mesh. Since the DUT mesh is different,
+            Calculates the 'optimization vector' at each position in the reference meshData. Since the DUT mesh is different,
             this requires interpolation to find the E-fields at each point
             :param x: positions/points
             :param Em: first E-field
@@ -415,7 +415,7 @@ class Scatt3DProblem():
             '''
             cells = []
             cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
-            colliding_cells = dolfinx.geometry.compute_colliding_cells(mesh.mesh, cell_candidates, x.T)
+            colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, x.T)
             for i, point in enumerate(x.T):
                 if len(colliding_cells.links(i)) > 0:
                     cells.append(colliding_cells.links(i)[0])
@@ -425,7 +425,7 @@ class Scatt3DProblem():
             return values
         
         xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'output-qs.xdmf', file_mode='w')
-        xdmf.write_mesh(mesh.mesh)
+        xdmf.write_mesh(meshData.mesh)
         self.epsr.x.array[:] = cell_volumes
         xdmf.write_function(self.epsr, -3)
         self.epsr.x.array[:] = self.epsr_array_ref
@@ -433,37 +433,39 @@ class Scatt3DProblem():
         self.epsr.x.array[:] = self.epsr_array_dut
         xdmf.write_function(self.epsr, -1)
         for nf in range(self.Nf):
-            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) and (mesh.N_antennas > 0) ):
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) and (meshData.N_antennas > 0) ):
                 print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                 sys.stdout.flush()
             k0 = 2*np.pi*self.fvec[nf]/c0
-            for m in range(mesh.N_antennas):
+            for m in range(meshData.N_antennas):
                 Em_ref = self.solutions_ref[nf][m]
-                for n in range(mesh.N_antennas):
+                for n in range(meshData.N_antennas):
                     if(self.ErefEdut): ## only using Eref*Eref right now. This should provide a superior reconstruction with fully simulated data, though
                         En = self.solutions_dut[nf][n] 
                     else:
                         En = self.solutions_ref[nf][n]
                     q.interpolate(functools.partial(q_func, Em=Em_ref, En=En, k0=k0))
                     # The function q is one row in the A-matrix, save it to file
-                    xdmf.write_function(q, nf*mesh.N_antennas*mesh.N_antennas + m*mesh.N_antennas + n)
-            if(mesh.N_antennas < 1): # if no antennas, still save
+                    xdmf.write_function(q, nf*meshData.N_antennas*meshData.N_antennas + m*meshData.N_antennas + n)
+            if(meshData.N_antennas < 1): # if no antennas, still save
                 q.interpolate(functools.partial(q_func, Em=self.solutions_ref[nf][0], En=self.solutions_ref[nf][0], k0=k0))
                 xdmf.write_function(q, nf)
         xdmf.close()
     
-    def saveEFieldsForAnim(self, Nframes = 50):
+    def saveEFieldsForAnim(self, Nframes = 50, removePML = True):
         '''
         Saves the E-field magnitudes for the final solution into .xdmf, for a number of different phase factors to create an animation in paraview
-        Uses the reference mesh and fields.
+        Uses the reference mesh and fields. If removePML, set the values within the PML to NaN
         '''
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
+        meshData = self.refMeshdata # use the ref case
+        
         E = dolfinx.fem.Function(self.ScalarSpace)
-        bb_tree = dolfinx.geometry.bb_tree(self.refMeshdata.mesh, self.refMeshdata.mesh.topology.dim)
+        bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
         def q_abs(x, Es, pol = 'z'): ## similar to the one in makeOptVectors
             cells = []
             cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
-            colliding_cells = dolfinx.geometry.compute_colliding_cells(self.refMeshdata.mesh, cell_candidates, x.T)
+            colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, x.T)
             for i, point in enumerate(x.T):
                 if len(colliding_cells.links(i)) > 0:
                     cells.append(colliding_cells.links(i)[0])
@@ -479,7 +481,10 @@ class Scatt3DProblem():
         for pol in pols:
             xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
             E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
-            xdmf.write_mesh(self.refMeshdata.mesh)
+            xdmf.write_mesh(meshData.mesh)
+            defect_cells = meshData.subdomains.find(meshData.pml_marker)
+            pml_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=defect_cells)
+            E.x.array[pml_dofs] = np.nan
             for i in range(Nframes):
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
                 xdmf.write_function(E, i)
@@ -493,20 +498,23 @@ class Scatt3DProblem():
         :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0)
         :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
         '''
+        if( (self.verbosity > 0 and self.comm.rank == self.model_rank)):
+                print(f'Calculating farfield values...')
+                sys.stdout.flush()
         if(reference):
-            mesh = self.refMeshdata
+            meshData = self.refMeshdata
             sols = self.solutions_ref
         else:
-            mesh = self.DUTMeshdata
+            meshData = self.DUTMeshdata
             sols = self.solutions_dut
             
         numAngles = np.shape(angles)[0]
-        prefactor = dolfinx.fem.Constant(mesh.mesh, 0j)
-        n = ufl.FacetNormal(mesh.mesh)('+') ## normal direction, hopefully ('+') means outward
+        prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
+        n = ufl.FacetNormal(meshData.mesh)('+') ## normal direction, hopefully ('+') means outward
         #nx = n[0]('+') ## not sure how this works. hopefully it does...
         #ny = n[1]('+')
         #nz = n[2]('+')
-        signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(mesh.mesh))) # Enforce outward pointing normal
+        signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
         farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
         for b in range(self.Nf):
@@ -541,24 +549,35 @@ class Scatt3DProblem():
                     return(F_theta, F_phi)
                 
                 farfields[b, i] = evalFs()
+                
+                
+            ## first plot by angle
+            plt.plot(angles[:, 1], farfields[b][0], label = 'theta-pol')
+            plt.plot(angles[:, 1], farfields[b][0], label = 'phi-pol')
+            plt.show()
+                
+            
         if(compareToMie):
             ##Calculate Mie scattering
-            lambdas = c0/self.fvec
-            x = 2*pi/mesh.object_radius/lambdas
             m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-            phis = angles[:, 1] ## the phi angles for me - since i_par is for scattering in the plane
-            qext, qsca, qback, g = miepython.i_par(m, x, norm='qsca')
-            
-            
+            mieForward = np.zeros_like(self.fvec)
+            mieBackward = np.zeros_like(self.fvec)
+            for i in range(len(self.fvec)): ## get a miepython error if I use a vector of x, so:
+                lambdat = c0/self.fvec[i]
+                x = 2*pi/meshData.object_radius/lambdat
+                mieForward[i] = miepython.i_par(m, x, np.cos(pi), norm='qsca') 
+                mieBackward[i] = miepython.i_par(m, x, np.cos(0), norm='qsca')
             
             for i in range(len(angles)):
-                plt.ylabel('Frequency [GHz]')
                 plt.plot(self.fvec/1e9, np.abs(farfields[:, i, 0])**2 + np.abs(farfields[:, i, 1])**2, label = r'sim, $\theta=$'+f'{angles[i, 0]:.0f}, $\phi={angles[i, 1]:.0f}$')
-                
-                #plt.plot(self.fvec/1e9, 4*pi*mesh.FF_surface_radius**2*np.ones_like(self.fvec), label = r'theo, area of sphere') ## theoretical area of a sphere
-                plt.legend()
-                plt.grid()
-                plt.tight_layout()
-                plt.show()
+            
+            plt.ylabel('Frequency [GHz]')  
+            plt.plot(self.fvec/1e9, mieForward, linestyle='--', label = r'Mie forward-scattering')
+            plt.plot(self.fvec/1e9, mieBackward, linestyle='--', label = r'Mie backward-scattering')
+            #plt.plot(self.fvec/1e9, 4*pi*meshData.FF_surface_radius**2*np.ones_like(self.fvec), label = r'theo, area of sphere') ## theoretical area of a sphere
+            plt.legend()
+            plt.grid()
+            plt.tight_layout()
+            plt.show()
             
         return farfields
