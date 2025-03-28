@@ -162,6 +162,7 @@ class Scatt3DProblem():
         self.pec_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=meshData.boundaries.find(meshData.pec_surface_marker))
         self.bc_pec = dolfinx.fem.dirichletbc(self.Ezero, self.pec_dofs)
         if(meshData.FF_surface): ## if there is a farfield surface
+            self.FF_surface_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=meshData.boundaries.find(meshData.farfield_surface_marker))
             self.dS_farfield = self.dS(meshData.farfield_surface_marker)
             cells = []
             ff_facets = meshData.boundaries.find(meshData.farfield_surface_marker)
@@ -180,16 +181,18 @@ class Scatt3DProblem():
         self.epsr.x.array[:] = self.epsr_bkg
         self.mur.x.array[:] = self.mur_bkg
         mat_cells = meshData.subdomains.find(meshData.mat_marker)
-        mat_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=mat_cells)
+        self.mat_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=mat_cells)
         defect_cells = meshData.subdomains.find(meshData.defect_marker)
-        defect_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=defect_cells)
-        self.epsr.x.array[mat_dofs] = self.material_epsr
-        self.mur.x.array[mat_dofs] = self.material_mur
-        self.epsr.x.array[defect_dofs] = self.material_epsr
-        self.mur.x.array[defect_dofs] = self.material_mur
+        self.defect_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=defect_cells)
+        pml_cells = meshData.subdomains.find(meshData.pml_marker)
+        self.pml_dofs = dolfinx.fem.locate_dofs_topological(self.ScalarSpace, entity_dim=self.tdim, entities=pml_cells)
+        self.epsr.x.array[self.mat_dofs] = self.material_epsr
+        self.mur.x.array[self.mat_dofs] = self.material_mur
+        self.epsr.x.array[self.defect_dofs] = self.material_epsr
+        self.mur.x.array[self.defect_dofs] = self.material_mur
         self.epsr_array_ref = self.epsr.x.array.copy()
-        self.epsr.x.array[defect_dofs] = self.defect_epsr
-        self.mur.x.array[defect_dofs] = self.defect_mur
+        self.epsr.x.array[self.defect_dofs] = self.defect_epsr
+        self.mur.x.array[self.defect_dofs] = self.defect_mur
         self.epsr_array_dut = self.epsr.x.array.copy()
         
     def CalculatePML(self, meshData, k):
@@ -482,13 +485,17 @@ class Scatt3DProblem():
             xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
             E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
             xdmf.write_mesh(meshData.mesh)
-            pml_cells = meshData.subdomains.find(meshData.pml_marker)
-            pml_dofs = dolfinx.fem.locate_dofs_topological(self.ScalarSpace, entity_dim=self.tdim, entities=pml_cells)
-            E.x.array[pml_dofs] = np.nan
+            E.x.array[self.pml_dofs] = 0#np.nan
             for i in range(Nframes):
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
                 xdmf.write_function(E, i)
         xdmf.close()
+        
+    def saveDofsView(self, meshData):
+        '''
+        Saves the dofs with different numbers for viewing in ParaView
+        :param meshData: Whichever meshData to use
+        '''
             
     def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False):
         '''
@@ -533,8 +540,8 @@ class Scatt3DProblem():
                     H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
                     
                     ## can only integrate scalars
-                    self.F_theta = 40*signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                    self.F_phi = 40*signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
+                    self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
+                    self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                     
                     #self.F_theta = 1*self.dS_farfield ## calculate area
                     #self.F_phi = 1*self.dS_farfield ## calculate area
@@ -563,7 +570,7 @@ class Scatt3DProblem():
                     for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
                         lambdat = c0/freq
                         x = 2*pi*meshData.object_radius/lambdat
-                        mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')
+                        mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
                      
                     plt.plot(angles[:, 1], mie, label = 'Mie', linewidth = 2.5)
                     plt.legend()
