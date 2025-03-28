@@ -120,16 +120,16 @@ class Scatt3DProblem():
         '''
         t1 = timer()
         if(computeRef):
-            mesh = self.refMeshdata
+            meshData = self.refMeshdata
         else:
-            mesh = self.DUTMeshdata
+            meshData = self.DUTMeshdata
         # Initialize function spaces, boundary conditions, and PML - for the reference mesh
-        self.InitializeFEM(mesh)
-        self.InitializeMaterial(mesh)
-        self.CalculatePML(mesh, self.k0) ## this is recalculated for each frequency, in ComputeSolutions - run it here just to initialize variables (not sure if needed)
-        mem_usage = memory_usage((self.ComputeSolutions, (mesh,), {'computeRef':True,}), max_usage = True)/1000 ## track the memory usage here
-        #self.ComputeSolutions(mesh, computeRef=True)
-        self.makeOptVectors(mesh)
+        self.InitializeFEM(meshData)
+        self.InitializeMaterial(meshData)
+        self.CalculatePML(meshData, self.k0) ## this is recalculated for each frequency, in ComputeSolutions - run it here just to initialize variables (not sure if needed)
+        mem_usage = memory_usage((self.ComputeSolutions, (meshData,), {'computeRef':True,}), max_usage = True)/1000 ## track the memory usage here
+        #self.ComputeSolutions(meshData, computeRef=True)
+        self.makeOptVectors(meshData)
         self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
         
         if(self.verbosity > 1):
@@ -162,7 +162,6 @@ class Scatt3DProblem():
         self.pec_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=meshData.boundaries.find(meshData.pec_surface_marker))
         self.bc_pec = dolfinx.fem.dirichletbc(self.Ezero, self.pec_dofs)
         if(meshData.FF_surface): ## if there is a farfield surface
-            self.FF_surface_dofs = dolfinx.fem.locate_dofs_topological(self.Vspace, entity_dim=self.fdim, entities=meshData.boundaries.find(meshData.farfield_surface_marker))
             self.dS_farfield = self.dS(meshData.farfield_surface_marker)
             cells = []
             ff_facets = meshData.boundaries.find(meshData.farfield_surface_marker)
@@ -185,7 +184,9 @@ class Scatt3DProblem():
         defect_cells = meshData.subdomains.find(meshData.defect_marker)
         self.defect_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=defect_cells)
         pml_cells = meshData.subdomains.find(meshData.pml_marker)
-        self.pml_dofs = dolfinx.fem.locate_dofs_topological(self.ScalarSpace, entity_dim=self.tdim, entities=pml_cells)
+        self.pml_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=pml_cells)
+        domain_cells = meshData.subdomains.find(meshData.domain_marker)
+        self.domain_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=domain_cells)
         self.epsr.x.array[self.mat_dofs] = self.material_epsr
         self.mur.x.array[self.mat_dofs] = self.material_mur
         self.epsr.x.array[self.defect_dofs] = self.material_epsr
@@ -481,11 +482,13 @@ class Scatt3DProblem():
             return E_vals
         pols = ['x', 'y', 'z']
         sol = self.solutions_ref[0][0] ## fields for the first frequency
+        pml_cells = meshData.subdomains.find(meshData.pml_marker)
+        pml_dofs = dolfinx.fem.locate_dofs_topological(self.ScalarSpace, entity_dim=self.tdim, entities=pml_cells)
         for pol in pols:
             xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
             E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
             xdmf.write_mesh(meshData.mesh)
-            E.x.array[self.pml_dofs] = 0#np.nan
+            E.x.array[pml_dofs] = 0#np.nan ## use the ScalarSpace one
             for i in range(Nframes):
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
                 xdmf.write_function(E, i)
@@ -496,6 +499,21 @@ class Scatt3DProblem():
         Saves the dofs with different numbers for viewing in ParaView
         :param meshData: Whichever meshData to use
         '''
+        self.InitializeFEM(meshData) ## so that this can be done before calculations
+        self.InitializeMaterial(meshData) ## so that this can be done before calculations
+        vals = dolfinx.fem.Function(self.Wspace)
+        xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'Dofsview.xdmf', file_mode='w')
+        xdmf.write_mesh(meshData.mesh)
+        pec_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.fdim, entities=meshData.boundaries.find(meshData.pec_surface_marker)) ## to use Wspace instead of Vspace... maybe this matters
+        vals.x.array[:] = np.nan
+        vals.x.array[self.domain_dofs] = 0
+        vals.x.array[self.pml_dofs] = -1
+        vals.x.array[self.defect_dofs] = 3
+        vals.x.array[self.mat_dofs] = 2
+        vals.x.array[pec_dofs] = 5
+        vals.x.array[self.farfield_cells] = 1
+        xdmf.write_function(vals, 0)
+        xdmf.close()
             
     def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False):
         '''
@@ -553,6 +571,8 @@ class Scatt3DProblem():
                         
                         F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
                         F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
+                        
+                        #return(F_thetaE, F_phiE, F_thetaH, F_phiH)
                         return(F_theta, F_phi)
                     
                     farfields[b, i] = evalFs()
@@ -561,9 +581,10 @@ class Scatt3DProblem():
                     print('theta',np.abs(farfields[b,:,0]))
                     print('phi',np.abs(farfields[b,:,1]))
                     print('intensity',np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2)
-                    plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
-                    plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')
+                    #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
+                    #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')
                     plt.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'intensity', linewidth = 2.5)
+                    
                     ##Calculate Mie scattering
                     m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
                     mie = np.zeros_like(angles[:, 1])
