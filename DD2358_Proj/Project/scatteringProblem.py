@@ -482,8 +482,8 @@ class Scatt3DProblem():
             xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
             E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
             xdmf.write_mesh(meshData.mesh)
-            defect_cells = meshData.subdomains.find(meshData.pml_marker)
-            pml_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.tdim, entities=defect_cells)
+            pml_cells = meshData.subdomains.find(meshData.pml_marker)
+            pml_dofs = dolfinx.fem.locate_dofs_topological(self.ScalarSpace, entity_dim=self.tdim, entities=pml_cells)
             E.x.array[pml_dofs] = np.nan
             for i in range(Nframes):
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
@@ -508,76 +508,91 @@ class Scatt3DProblem():
             meshData = self.DUTMeshdata
             sols = self.solutions_dut
             
-        numAngles = np.shape(angles)[0]
-        prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
-        n = ufl.FacetNormal(meshData.mesh)('+') ## normal direction, hopefully ('+') means outward
-        #nx = n[0]('+') ## not sure how this works. hopefully it does...
-        #ny = n[1]('+')
-        #nz = n[2]('+')
-        signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
-        exp_kr = dolfinx.fem.Function(self.ScalarSpace)
-        farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
-        for b in range(self.Nf):
-            freq = self.fvec[b]
-            k = 2*np.pi*freq/c0
-            E = sols[b][0]('+')
-            for i in range(numAngles):
-                theta = angles[i,0]*pi/180 # convert to radians first
-                phi = angles[i,1]*pi/180
-                
-                khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
-                phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
-                thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
-                
-                H = -1/(1j*k*self.mur_bkg)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
-                
-                eta0 = 376.73031366686166 #np.sqrt(mu0/eps0) ## I get an error if I use the latter expression... for some reason???
-                ## can only integrate scalars
-                self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                self.F_phi = signfactor*prefactor* ufl.inner( phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                
-                #self.F_theta = 1*self.dS_farfield ## calculate area
-                #self.F_phi = 1*self.dS_farfield ## calculate area
-                
-                khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
-                def evalFs(): ## evaluates the farfield in some given direction khat
-                    exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
-                    prefactor.value = 1j*k/(4*pi)
+        if(self.comm.rank == 0): ## should be easy to use all ranks, but I don't need this yet
+            
+            numAngles = np.shape(angles)[0]
+            prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
+            n = ufl.FacetNormal(meshData.mesh)('+')
+            signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
+            exp_kr = dolfinx.fem.Function(self.ScalarSpace)
+            farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
+            for b in range(self.Nf):
+                freq = self.fvec[b]
+                k = 2*np.pi*freq/c0
+                E = sols[b][0]('+')
+                for i in range(numAngles):
+                    theta = angles[i,0]*pi/180 # convert to radians first
+                    phi = angles[i,1]*pi/180
+                    khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
+                    phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
+                    thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
                     
-                    F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
-                    F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
-                    return(F_theta, F_phi)
+                    #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here
+                    eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
+                    
+                    H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
+                    
+                    ## can only integrate scalars
+                    self.F_theta = 40*signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
+                    self.F_phi = 40*signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
+                    
+                    #self.F_theta = 1*self.dS_farfield ## calculate area
+                    #self.F_phi = 1*self.dS_farfield ## calculate area
+                    
+                    khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
+                    def evalFs(): ## evaluates the farfield in some given direction khat
+                        exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
+                        prefactor.value = 1j*k/(4*pi)
+                        
+                        F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
+                        F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
+                        return(F_theta, F_phi)
+                    
+                    farfields[b, i] = evalFs()
                 
-                farfields[b, i] = evalFs()
+                if(compareToMie): ## first make some plots by angle
+                    print('theta',np.abs(farfields[b,:,0]))
+                    print('phi',np.abs(farfields[b,:,1]))
+                    print('intensity',np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2)
+                    plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
+                    plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')
+                    plt.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'intensity', linewidth = 2.5)
+                    ##Calculate Mie scattering
+                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    mie = np.zeros_like(angles[:, 1])
+                    for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
+                        lambdat = c0/freq
+                        x = 2*pi*meshData.object_radius/lambdat
+                        mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')
+                     
+                    plt.plot(angles[:, 1], mie, label = 'Mie', linewidth = 2.5)
+                    plt.legend()
+                    plt.show()
+                    plt.clf()
+                    
                 
+            if(compareToMie): ## then do plots by frequency for forward+backward scattering
+                ##Calculate Mie scattering
+                m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                mieForward = np.zeros_like(self.fvec)
+                mieBackward = np.zeros_like(self.fvec)
+                for i in range(len(self.fvec)): ## get a miepython error if I use a vector of x, so:
+                    lambdat = c0/self.fvec[i]
+                    x = 2*pi*meshData.object_radius/lambdat
+                    mieForward[i] = miepython.i_par(m, x, np.cos(pi), norm='qsca') 
+                    mieBackward[i] = miepython.i_par(m, x, np.cos(0), norm='qsca')
                 
-            ## first plot by angle
-            plt.plot(angles[:, 1], farfields[b][0], label = 'theta-pol')
-            plt.plot(angles[:, 1], farfields[b][0], label = 'phi-pol')
-            plt.show()
+                for i in range(len(angles)):
+                    plt.plot(self.fvec/1e9, np.abs(farfields[:, i, 0])**2 + np.abs(farfields[:, i, 1])**2, label = r'sim, $\theta=$'+f'{angles[i, 0]:.0f}, $\phi={angles[i, 1]:.0f}$')
                 
-            
-        if(compareToMie):
-            ##Calculate Mie scattering
-            m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-            mieForward = np.zeros_like(self.fvec)
-            mieBackward = np.zeros_like(self.fvec)
-            for i in range(len(self.fvec)): ## get a miepython error if I use a vector of x, so:
-                lambdat = c0/self.fvec[i]
-                x = 2*pi/meshData.object_radius/lambdat
-                mieForward[i] = miepython.i_par(m, x, np.cos(pi), norm='qsca') 
-                mieBackward[i] = miepython.i_par(m, x, np.cos(0), norm='qsca')
-            
-            for i in range(len(angles)):
-                plt.plot(self.fvec/1e9, np.abs(farfields[:, i, 0])**2 + np.abs(farfields[:, i, 1])**2, label = r'sim, $\theta=$'+f'{angles[i, 0]:.0f}, $\phi={angles[i, 1]:.0f}$')
-            
-            plt.ylabel('Frequency [GHz]')  
-            plt.plot(self.fvec/1e9, mieForward, linestyle='--', label = r'Mie forward-scattering')
-            plt.plot(self.fvec/1e9, mieBackward, linestyle='--', label = r'Mie backward-scattering')
-            #plt.plot(self.fvec/1e9, 4*pi*meshData.FF_surface_radius**2*np.ones_like(self.fvec), label = r'theo, area of sphere') ## theoretical area of a sphere
-            plt.legend()
-            plt.grid()
-            plt.tight_layout()
-            plt.show()
+                plt.xlabel('Frequency [GHz]')
+                plt.ylabel('Intensity')
+                plt.plot(self.fvec/1e9, mieForward, linestyle='--', label = r'Mie forward-scattering')
+                plt.plot(self.fvec/1e9, mieBackward, linestyle='--', label = r'Mie backward-scattering')
+                #plt.plot(self.fvec/1e9, 4*pi*meshData.FF_surface_radius**2*np.ones_like(self.fvec), label = r'theo, area of sphere') ## theoretical area of a sphere
+                plt.legend()
+                plt.grid()
+                plt.tight_layout()
+                plt.show()
             
         return farfields

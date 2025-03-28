@@ -87,31 +87,31 @@ if __name__ == '__main__':
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         #prevRuns.makePlots()
         #prevRuns.makePlots()
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/25)
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/10, object_geom='None', N_antennas=0)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName)
-        prob.saveEFieldsForAnim()
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName, excitation = 'planewave')
+        #prob.saveEFieldsForAnim()
         #prevRuns.memTimeAppend(prob)
         
     def testFarField(): ## run a spherica domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, h=1/10, domain_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.65, domain_radius=1.3, h=1/16, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
-        freqs = np.linspace(8e9, 12e9, 3)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', freqs = freqs)
-        #prob.saveEFieldsForAnim()
-        nvals = 30
+        freqs = np.linspace(10e9, 12e9, 3)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', freqs = freqs, material_epsr=2)
+        prob.saveEFieldsForAnim()
+        nvals = int(360/10)
         angles = np.zeros((nvals, 2))
         angles[:, 0] = 90
         angles[:, 1] = np.linspace(0, 360, nvals)
         prob.calcFarField(reference=True, angles = angles, compareToMie = True)
     
     
-    testRun()
+    #testRun()
     #profilingMemsTimes()
     #actualProfilerRunning()
-    #testFarField()
+    testFarField()
     
     otherprevs = []
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
@@ -119,3 +119,4 @@ if __name__ == '__main__':
     
     if(comm.rank == model_rank):
         print('runScatt3D complete, exiting...')
+        sys.stdout.flush()

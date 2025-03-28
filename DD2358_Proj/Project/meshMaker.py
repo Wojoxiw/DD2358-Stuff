@@ -38,7 +38,7 @@ class MeshData():
                  defect_geom = 'cylinder',
                  domain_radius = 1.3,
                  domain_height = 0.9,
-                 PML_thickness = .5,
+                 PML_thickness = .3,
                  dome_height = 0.3,
                  antenna_width = 0.7625, 
                  antenna_height = 0.3625,
@@ -63,7 +63,7 @@ class MeshData():
         :param verbosity: This is passed to gmsh, also if > 0, I print more stuff
         :param model_rank: Rank of the master model - for saving, plotting, etc.
         :param domain_geom: The geometry of the domain (and PML).
-        :param object_geom: Geometry of the object
+        :param object_geom: Geometry of the object ('sphere', 'None')
         :param defect_geom: Geometry of the defect.
         :param domain_radius:
         :param domain_height:
@@ -115,7 +115,7 @@ class MeshData():
             self.domain_radius = domain_radius * self.lambda0
             self.PML_radius = self.domain_radius + PML_thickness * self.lambda0
             if(self.FF_surface):
-                self.FF_surface_radius = self.domain_radius - self.h*2 ## just a bit less than the domain's radius
+                self.FF_surface_radius = self.domain_radius - self.h*3 ## just a bit less than the domain's radius
         else:
             print('Invalid geometry type in MeshData, exiting...')
             exit()
@@ -137,11 +137,13 @@ class MeshData():
         self.kc = pi/self.antenna_width ## cutoff wavenumber
         ## Object + defect(s) parameters
         if(object_geom == 'sphere'):
-            self.object_geom = object_geom
             self.object_radius = object_radius * self.lambda0
+        elif(object_geom == 'None'):
+            pass
         else:
             print('Nonvalid object geom, exiting...')
             exit()
+        self.object_geom = object_geom
         
         self.defect_angles = defect_angles ## [x, y, z] rotations
         if(defect_geom == 'cylinder'):
