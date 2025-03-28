@@ -245,7 +245,7 @@ class MeshData():
             if(self.N_antennas > 0):
                 removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-self.N_antennas:]]]
             defectDimTags = [x[0] for x in outDimTagsMap[4:] if x[0] not in removeDimTags]
-            matDimTags = [x for x in outDimTagsMap[2] if x not in defectDimTags]
+            matDimTags = [x for x in outDimTagsMap[2:] if x not in defectDimTags+removeDimTags]
             if(self.FF_surface):
                 matDimTags = matDimTags #+ FF_surface_dimTags
             domainDimTags = [x for x in outDimTagsMap[1] if x not in removeDimTags+matDimTags+defectDimTags]

@@ -87,7 +87,7 @@ if __name__ == '__main__':
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         #prevRuns.makePlots()
         #prevRuns.makePlots()
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/10, object_geom='None', N_antennas=0)
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/2, object_geom='None', N_antennas=0)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName, excitation = 'planewave')
@@ -98,7 +98,7 @@ if __name__ == '__main__':
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.65, domain_radius=1.3, h=1/16, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
-        freqs = np.linspace(10e9, 12e9, 3)
+        freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', freqs = freqs, material_epsr=2)
         prob.saveEFieldsForAnim()
         nvals = int(360/10)
@@ -108,10 +108,10 @@ if __name__ == '__main__':
         prob.calcFarField(reference=True, angles = angles, compareToMie = True)
     
     
-    #testRun()
+    testRun()
     #profilingMemsTimes()
     #actualProfilerRunning()
-    testFarField()
+    #testFarField()
     
     otherprevs = []
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
