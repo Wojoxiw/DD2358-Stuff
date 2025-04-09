@@ -78,7 +78,7 @@ else:
     exit(0)
 
 from mpi4py import MPI
-
+print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
 # +
 import numpy as np
 
@@ -87,7 +87,7 @@ from dolfinx import fem, io, mesh, plot
 from dolfinx.fem.petsc import LinearProblem
 
 # -
-print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
+
 # Note that it is important to first `from mpi4py import MPI` to
 # ensure that MPI is correctly initialised.
 
