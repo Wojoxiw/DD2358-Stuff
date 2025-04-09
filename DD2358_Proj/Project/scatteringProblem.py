@@ -583,7 +583,7 @@ class Scatt3DProblem():
                     print('intensity',np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2)
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')
-                    plt.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'intensity', linewidth = 2.5)
+                    plt.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'Integrated Intensity', linewidth = 2.5)
                     
                     ##Calculate Mie scattering
                     m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
@@ -593,7 +593,7 @@ class Scatt3DProblem():
                         x = 2*pi*meshData.object_radius/lambdat
                         mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
                      
-                    plt.plot(angles[:, 1], mie, label = 'Mie', linewidth = 2.5)
+                    plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     plt.legend()
                     plt.show()
                     plt.clf()
