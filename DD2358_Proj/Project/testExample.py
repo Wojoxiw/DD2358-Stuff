@@ -194,3 +194,5 @@ uh = problem.solve()
 #     print("To install pyvista with pip: 'python3 -m pip install pyvista'.")
 # # -
 #===============================================================================
+
+print('Finished. ##################')
