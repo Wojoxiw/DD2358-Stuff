@@ -3,9 +3,10 @@
 from mpi4py import MPI
 import dolfinx
 import numpy as np
+import sys
 
 print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
-
+sys.stdout.flush()
 mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 10, 10)
 V = dolfinx.fem.functionspace(mesh, ("Lagrange", 1))
 u_r = dolfinx.fem.Function(V, dtype=np.float64) 
@@ -65,8 +66,10 @@ petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_t
 problem = dolfinx.fem.petsc.LinearProblem(a, L, bcs=[bc], petsc_options=petsc_options)
 
 print('solving problem')
+sys.stdout.flush()
 uh = problem.solve()
 print('problem solved')
+sys.stdout.flush()
 # We compute the $L^2$ error and the max error.
 #
 # ## Error computation
