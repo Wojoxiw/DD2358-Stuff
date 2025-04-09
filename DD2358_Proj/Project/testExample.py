@@ -66,16 +66,8 @@
 
 import importlib.util
 
-if importlib.util.find_spec("petsc4py") is not None:
-    import dolfinx
+import dolfinx
 
-    if not dolfinx.has_petsc:
-        print("This demo requires DOLFINx to be compiled with PETSc enabled.")
-        exit(0)
-    from petsc4py.PETSc import ScalarType  # type: ignore
-else:
-    print("This demo requires petsc4py.")
-    exit(0)
 
 from mpi4py import MPI
 print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")

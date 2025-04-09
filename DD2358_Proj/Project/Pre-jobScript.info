@@ -20,7 +20,7 @@ mamba create --name Scatt3D
 mamba activate Scatt3D
 # mamba env remove -n Scatt3D # to remove it for reinstalling. May need to module purge if MPI problems?
 mamba install fenics-dolfinx mpich petsc=*=complex*
-mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler numpy
+mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler numpy miepython
 pip install imageio[ffmpeg]
 
 Once stuff is installed, must make sure mamba is activated (and test the script for ImportErrors) before running jobscript:
