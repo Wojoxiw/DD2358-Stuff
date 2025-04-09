@@ -1,125 +1,81 @@
 
-import importlib.util
-
-import dolfinx
-
 
 from mpi4py import MPI
-print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
-# +
+import dolfinx
 import numpy as np
 
-import ufl
-from dolfinx import fem, io, mesh, plot
-from dolfinx.fem.petsc import LinearProblem
+print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
 
-# -
+mesh = dolfinx.mesh.create_unit_square(MPI.COMM_WORLD, 10, 10)
+V = dolfinx.fem.functionspace(mesh, ("Lagrange", 1))
+u_r = dolfinx.fem.Function(V, dtype=np.float64) 
+u_r.interpolate(lambda x: x[0])
+u_c = dolfinx.fem.Function(V, dtype=np.complex128)
+u_c.interpolate(lambda x:0.5*x[0]**2 + 1j*x[1]**2)
+print(u_r.x.array.dtype)
+print(u_c.x.array.dtype)
 
-# Note that it is important to first `from mpi4py import MPI` to
-# ensure that MPI is correctly initialised.
-
-# We create a rectangular {py:class}`Mesh <dolfinx.mesh.Mesh>` using
-# {py:func}`create_rectangle <dolfinx.mesh.create_rectangle>`, and
-# create a finite element {py:class}`function space
-# <dolfinx.fem.FunctionSpace>` $V$ on the mesh.
-
-# +
-msh = mesh.create_rectangle(
-    comm=MPI.COMM_WORLD,
-    points=((0.0, 0.0), (2.0, 1.0)),
-    n=(32, 16),
-    cell_type=mesh.CellType.triangle,
-)
-V = fem.functionspace(msh, ("Lagrange", 1))
-# -
-
-# The second argument to {py:func}`functionspace
-# <dolfinx.fem.functionspace>` is a tuple `(family, degree)`, where
-# `family` is the finite element family, and `degree` specifies the
-# polynomial degree. In this case `V` is a space of continuous Lagrange
-# finite elements of degree 1.
+# However, as we would like to solve linear algebra problems of the form $Ax=b$, we need to be able to use matrices and vectors that support real and complex numbers. As [PETSc](https://petsc.org/release/) is one of the most popular interfaces to linear algebra packages, we need to be able to work with their matrix and vector structures.
 #
-# To apply the Dirichlet boundary conditions, we find the mesh facets
-# (entities of topological co-dimension 1) that lie on the boundary
-# $\Gamma_D$ using {py:func}`locate_entities_boundary
-# <dolfinx.mesh.locate_entities_boundary>`. The function is provided
-# with a 'marker' function that returns `True` for points `x` on the
-# boundary and `False` otherwise.
+# Unfortunately, PETSc only supports one floating type in their matrices, thus we need to install two versions of PETSc, one that supports `float64` and one that supports `complex128`. In the [docker images](https://hub.docker.com/r/dolfinx/dolfinx) for DOLFINx, both versions are installed, and one can switch between them by calling `source dolfinx-real-mode` or `source dolfinx-complex-mode`. For the `dolfinx/lab` images, one can change the Python kernel to be either the real or complex mode, by going to `Kernel->Change Kernel...` and choosing `Python3 (ipykernel)` (for real mode) or `Python3 (DOLFINx complex)` (for complex mode).
+#
+# We check that we are using the correct installation of PETSc by inspecting the scalar type.
 
-facets = mesh.locate_entities_boundary(
-    msh,
-    dim=(msh.topology.dim - 1),
-    marker=lambda x: np.isclose(x[0], 0.0) | np.isclose(x[0], 2.0),
-)
+from petsc4py import PETSc
+from dolfinx.fem.petsc import assemble_vector
+print(PETSc.ScalarType)
+assert np.dtype(PETSc.ScalarType).kind == 'c'
 
-# We now find the degrees-of-freedom that are associated with the
-# boundary facets using {py:func}`locate_dofs_topological
-# <dolfinx.fem.locate_dofs_topological>`:
+# ## Variational problem
+# We are now ready to define our variational problem
 
-dofs = fem.locate_dofs_topological(V=V, entity_dim=1, entities=facets)
-
-# and use {py:func}`dirichletbc <dolfinx.fem.dirichletbc>` to create a
-# {py:class}`DirichletBC <dolfinx.fem.DirichletBC>` class that
-# represents the boundary condition:
-
-bc = fem.dirichletbc(value=ScalarType(0), dofs=dofs, V=V)
-
-# Next, the variational problem is defined:
-
-# +
+import ufl
 u = ufl.TrialFunction(V)
 v = ufl.TestFunction(V)
-x = ufl.SpatialCoordinate(msh)
-f = 10 * ufl.exp(-((x[0] - 0.5) ** 2 + (x[1] - 0.5) ** 2) / 0.02)
-g = ufl.sin(5 * x[0])
+f = dolfinx.fem.Constant(mesh, PETSc.ScalarType(-1 - 2j))
 a = ufl.inner(ufl.grad(u), ufl.grad(v)) * ufl.dx
-L = ufl.inner(f, v) * ufl.dx + ufl.inner(g, v) * ufl.ds
-# -
+L = ufl.inner(f, v) * ufl.dx
 
-# A {py:class}`LinearProblem <dolfinx.fem.petsc.LinearProblem>` object is
-# created that brings together the variational problem, the Dirichlet
-# boundary condition, and which specifies the linear solver. In this
-# case an LU solver is used. The {py:func}`solve
-# <dolfinx.fem.petsc.LinearProblem.solve>` computes the solution.
+# Note that we have used the `PETSc.ScalarType` to wrap the constant source on the right hand side. This is because we want the integration kernels to assemble into the correct floating type.
+#
+# Secondly, note that we are using `ufl.inner` to describe multiplication of $f$ and $v$, even if they are scalar values. This is because `ufl.inner` takes the conjugate of the second argument, as decribed by the $L^2$ inner product. One could alternatively write this out explicitly
+#
+# ### Inner-products and derivatives
 
-# +
-problem = LinearProblem(a, L, bcs=[bc], petsc_options={"ksp_type": "preonly", "pc_type": "lu"})
+L2 = f * ufl.conj(v) * ufl.dx
+print(L)
+print(L2)
+
+# Similarly, if we want to use the function `ufl.derivative` to take derivatives of functionals, we need to take some special care. As `ufl.derivative` inserts a `ufl.TestFunction` to represent the variation, we need to take the conjugate of this to be able to use it to assemble vectors.
+#
+
+J = u_c**2 * ufl.dx
+F = ufl.derivative(J, u_c, ufl.conj(v))
+residual = assemble_vector(dolfinx.fem.form(F))
+print(residual.array)
+
+# We define our Dirichlet condition and setup and solve the variational problem.
+# ## Solve variational problem
+
+mesh.topology.create_connectivity(mesh.topology.dim-1, mesh.topology.dim)
+boundary_facets = dolfinx.mesh.exterior_facet_indices(mesh.topology)
+boundary_dofs = dolfinx.fem.locate_dofs_topological(V, mesh.topology.dim-1, boundary_facets)
+bc = dolfinx.fem.dirichletbc(u_c, boundary_dofs)
+problem = dolfinx.fem.petsc.LinearProblem(a, L, bcs=[bc])
 uh = problem.solve()
-# -
 
-# The solution can be written to a {py:class}`XDMFFile
-# <dolfinx.io.XDMFFile>` file visualization with ParaView or VisIt:
+# We compute the $L^2$ error and the max error.
+#
+# ## Error computation
+#
 
-# +
-#===============================================================================
-# with io.XDMFFile(msh.comm, "out_poisson/poisson.xdmf", "w") as file:
-#     file.write_mesh(msh)
-#     file.write_function(uh)
-# # -
-# 
-# # and displayed using [pyvista](https://docs.pyvista.org/).
-# 
-# # +
-# try:
-#     import pyvista
-# 
-#     cells, types, x = plot.vtk_mesh(V)
-#     grid = pyvista.UnstructuredGrid(cells, types, x)
-#     grid.point_data["u"] = uh.x.array.real
-#     grid.set_active_scalars("u")
-#     plotter = pyvista.Plotter()
-#     plotter.add_mesh(grid, show_edges=True)
-#     warped = grid.warp_by_scalar()
-#     plotter.add_mesh(warped)
-#     if pyvista.OFF_SCREEN:
-#         pyvista.start_xvfb(wait=0.1)
-#         plotter.screenshot("uh_poisson.png")
-#     else:
-#         plotter.show()
-# except ModuleNotFoundError:
-#     print("'pyvista' is required to visualise the solution.")
-#     print("To install pyvista with pip: 'python3 -m pip install pyvista'.")
-# # -
-#===============================================================================
+x = ufl.SpatialCoordinate(mesh)
+u_ex = 0.5 * x[0]**2 + 1j*x[1]**2
+L2_error = dolfinx.fem.form(ufl.dot(uh-u_ex, uh-u_ex) * ufl.dx(metadata={"quadrature_degree": 5}))
+local_error = dolfinx.fem.assemble_scalar(L2_error)
+global_error = np.sqrt(mesh.comm.allreduce(local_error, op=MPI.SUM))
+max_error = mesh.comm.allreduce(np.max(np.abs(u_c.x.array-uh.x.array)))
+print(global_error, max_error)
 
-print('Finished. ##################')
+print('done')
+
