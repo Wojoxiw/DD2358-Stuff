@@ -52,7 +52,7 @@ print(L2)
 J = u_c**2 * ufl.dx
 F = ufl.derivative(J, u_c, ufl.conj(v))
 residual = assemble_vector(dolfinx.fem.form(F))
-print(residual.array)
+#print(residual.array)
 
 # We define our Dirichlet condition and setup and solve the variational problem.
 # ## Solve variational problem
@@ -61,9 +61,12 @@ mesh.topology.create_connectivity(mesh.topology.dim-1, mesh.topology.dim)
 boundary_facets = dolfinx.mesh.exterior_facet_indices(mesh.topology)
 boundary_dofs = dolfinx.fem.locate_dofs_topological(V, mesh.topology.dim-1, boundary_facets)
 bc = dolfinx.fem.dirichletbc(u_c, boundary_dofs)
-problem = dolfinx.fem.petsc.LinearProblem(a, L, bcs=[bc])
-uh = problem.solve()
+petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"}
+problem = dolfinx.fem.petsc.LinearProblem(a, L, bcs=[bc], petsc_options=petsc_options)
 
+print('solving problem')
+uh = problem.solve()
+print('problem solved')
 # We compute the $L^2$ error and the max error.
 #
 # ## Error computation
