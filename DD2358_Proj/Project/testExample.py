@@ -1,4 +1,5 @@
 ## working example of a script that freezes when solving across 2 processors in a cluster
+# from https://github.com/jorgensd/dolfinx-tutorial/blob/main/chapter1/complex_mode.py
 
 from mpi4py import MPI
 import dolfinx
