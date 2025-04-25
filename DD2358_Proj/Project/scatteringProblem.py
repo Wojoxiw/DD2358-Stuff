@@ -9,7 +9,6 @@ import basix
 import functools
 import miepython
 from timeit import default_timer as timer
-import psutil
 from memory_profiler import memory_usage
 import gmsh
 import sys

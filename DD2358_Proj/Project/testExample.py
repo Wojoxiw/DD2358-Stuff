@@ -1,10 +1,26 @@
 ## working example of a script that freezes when solving across 2 processors in a cluster
+## try to include all the imports to be sure the installation in complete for running scatt3D
 # from https://github.com/jorgensd/dolfinx-tutorial/blob/main/chapter1/complex_mode.py
 
-from mpi4py import MPI
-import dolfinx
+import os
 import numpy as np
+import dolfinx, ufl, basix
+import dolfinx.fem.petsc
+from mpi4py import MPI
+import gmsh
+from matplotlib import pyplot as plt
+import functools
+import pyvista
+import sys, petsc4py
+from petsc4py import PETSc
+import scipy
+from memory_profiler import memory_usage
+from timeit import default_timer as timer
+import time
 import sys
+import meshMaker
+import scatteringProblem
+import memTimeEstimation
 
 print(f"{MPI.COMM_WORLD.rank=} {MPI.COMM_WORLD.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
 sys.stdout.flush()
@@ -60,7 +76,7 @@ L2_error = dolfinx.fem.form(ufl.dot(uh-u_ex, uh-u_ex) * ufl.dx(metadata={"quadra
 local_error = dolfinx.fem.assemble_scalar(L2_error)
 global_error = np.sqrt(mesh.comm.allreduce(local_error, op=MPI.SUM))
 max_error = mesh.comm.allreduce(np.max(np.abs(u_c.x.array-uh.x.array)))
-#print(global_error, max_error)
+print('glob, max erorrs:', global_error, max_error)
 
 print('done')
 

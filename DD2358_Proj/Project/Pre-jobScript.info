@@ -13,17 +13,28 @@ git fetch --all
 git reset --hard origin/master
 
 Then install the needed packages in an env:
-Loading the modules that are available always seems to give an error such as ModuleNotFoundError: No module named 'numpy', so just install all with mamba
-Can install mamba from https://github.com/conda-forge/miniforge#mambaforge, otherwise just use conda
+module load foss
+module save ## to make this default so it autoloads
 
-mamba create --name Scatt3D
-mamba activate Scatt3D
-# mamba env remove -n Scatt3D # to remove it for reinstalling. May need to module purge if MPI problems?
-mamba install fenics-dolfinx mpich petsc=*=complex*
-mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler numpy miepython
-pip install imageio[ffmpeg]
+# Actual installation
+git clone https://github.com/spack/spack.git
+. ./spack/share/spack/setup-env.sh
+spack env create Scatt3D
+spack env activate Scatt3D
+spack add fenics-dolfinx+adios2 ^petsc+complex+mumps py-fenics-dolfinx cflags="-O3" fflags="-O3"
+spack add py-gmsh py-pyvista
+spack compiler find
+spack external find openmpi
+spack install
 
-Once stuff is installed, must make sure mamba is activated (and test the script for ImportErrors) before running jobscript:
+spack add py-psutil ## this puts me over the disk quota, somehow
+spack install
+## may get an error on a package - install that with the above flags, the spack concretize --force
+
+Once stuff is installed, must make sure the env is activated (and test the script for ImportErrors) before running jobscript:
+. ./spack/share/spack/setup-env.sh ## when in the folder containing the spack folder
+spack env activate Scatt3D
+python testExample.py ## a quick testscript
 
 To run the jobscript:
 sbatch jobscript.sh
@@ -48,7 +59,17 @@ Some info:
 ## queue jobs sequentially with sbatch -d afterok:firstjobid run_script.sh
 
 
+##
+Old way to install: use mamba/conda to install. This is easy and faster, but cannot use MPI across nodes.
+Can install mamba from https://github.com/conda-forge/miniforge#mambaforge, otherwise just use conda
 
+mamba create --name Scatt3D
+mamba activate Scatt3D
+# mamba env remove -n Scatt3D # to remove it for reinstalling. May need to module purge if MPI problems?
+mamba install fenics-dolfinx mpich petsc=*=complex*
+mamba install scipy matplotlib python-gmsh pyvista pyvistaqt spgl1 h5py psutil memory_profiler numpy miepython
+pip install imageio[ffmpeg]
+##
 
 Potential jobscript thing to send/retrieve data to node-local disks:
 : '

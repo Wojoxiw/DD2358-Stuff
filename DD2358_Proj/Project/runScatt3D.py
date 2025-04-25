@@ -15,14 +15,11 @@ import dolfinx.fem.petsc
 from mpi4py import MPI
 import gmsh
 from matplotlib import pyplot as plt
-import pyvista as pv
-import pyvistaqt as pvqt
 import functools
 
 import sys, petsc4py
 petsc4py.init(sys.argv)
 from petsc4py import PETSc
-import psutil
 import scipy
 
 from memory_profiler import memory_usage
@@ -62,7 +59,6 @@ if __name__ == '__main__':
     if(comm.rank == model_rank):
         print('Expected number of MPI processes:', MPInum)
         print('Scatt3D start:')
-        #print(psutil.virtual_memory().total / 1024**3, 'GB of available RAM')
     sys.stdout.flush()
     
     def profilingMemsTimes(): ## as used to make plots for the report
