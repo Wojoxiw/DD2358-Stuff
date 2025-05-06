@@ -37,7 +37,7 @@ class MeshData():
                  defect_geom = 'cylinder',
                  domain_radius = 1.3,
                  domain_height = 0.9,
-                 PML_thickness = .3,
+                 PML_thickness = 0,
                  dome_height = 0.3,
                  antenna_width = 0.7625, 
                  antenna_height = 0.3625,
@@ -66,7 +66,7 @@ class MeshData():
         :param defect_geom: Geometry of the defect.
         :param domain_radius:
         :param domain_height:
-        :param PML_thickness:
+        :param PML_thickness: If not specified, calculated to give 12 mesh cells between the domain and the edge of the PML
         :param dome_height:
         :param antenna_width: Width of antenna apertures, 22.86 mm
         :param antenna_height: Height of antenna apertures
@@ -96,6 +96,11 @@ class MeshData():
         self.tdim = 3 ## Tetrahedra dimensionality - 3D
         self.fdim = self.tdim - 1 ## Facet dimensionality - 2D
         self.FF_surface = FF_surface
+        
+        
+        if(PML_thickness == 0): ## if not specified, calculate it
+            PML_thickness = self.h*12
+        
         ## Set up geometry variables - in units of lambda0 unless otherwise specified
         if(self.domain_geom == 'domedCyl'): ## a cylinder with an oblate-spheroid 'dome' added over and underneath
             self.domain_radius = domain_radius * self.lambda0

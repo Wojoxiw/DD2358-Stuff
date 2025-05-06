@@ -80,12 +80,10 @@ if __name__ == '__main__':
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/10) ## this will have around 190000 elements
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
             
-    def testRun():
+    def testRun(h = 1/2): ## A quick testrun. If h is not specified, makes it tiny
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
-        #prevRuns.makePlots()
-        #prevRuns.makePlots()
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/2, object_geom='None', N_antennas=0)
-        #prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, object_geom='None', N_antennas=0)
+        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName, excitation = 'planewave')
         #prob.saveEFieldsForAnim()
@@ -105,13 +103,14 @@ if __name__ == '__main__':
         angles[:, 1] = np.linspace(0, 360, nvals)
         prob.calcFarField(reference=True, angles = angles, compareToMie = True)
     
-    
-    testRun()
+    for b in range(30):
+        h = 1/(b+3)
+        testRun(h)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testFarField()
     
-    otherprevs = []
+    otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
     prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
     #prevRuns.makePlots()
     #prevRuns.makePlotsSTD()
