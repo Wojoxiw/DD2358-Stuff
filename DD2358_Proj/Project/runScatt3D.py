@@ -85,11 +85,11 @@ if __name__ == '__main__':
         #prevRuns.makePlots()
         #prevRuns.makePlots()
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=1/2, object_geom='None', N_antennas=0)
-        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
+        #prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName, excitation = 'planewave')
         #prob.saveEFieldsForAnim()
-        #prevRuns.memTimeAppend(prob)
+        prevRuns.memTimeAppend(prob)
         
     def testFarField(): ## run a spherica domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
@@ -112,7 +112,8 @@ if __name__ == '__main__':
     #testFarField()
     
     otherprevs = []
-    #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
+    prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
+    #prevRuns.makePlots()
     #prevRuns.makePlotsSTD()
     
     if(comm.rank == model_rank):

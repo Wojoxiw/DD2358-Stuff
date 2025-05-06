@@ -133,30 +133,34 @@ class runTimesMems():
     def makePlots(self):
         if(self.comm.rank == 0):
             self.calcStats()
+            fig1 = plt.figure()
+            ax1 = plt.subplot(1, 1, 1)
+            ax1.grid(True)
+            ax1.set_title('Computation Time by Problem Size')
+            ax1.set_xlabel('# FEM Elements')
+            ax1.set_ylabel('Time [hours]')
             ## Times plot
             xs = np.linspace(np.min(self.sizes), np.max(self.sizes), 1000)
-            plt.scatter(self.sizes, self.times/3600, label='runs on computer')
-            plt.title('Computation time by size')
-            plt.xlabel(r'(# elements)*')
-            plt.ylabel('Time [hours]')
-            plt.grid()
-            plt.plot(xs, self.fitLine(xs, self.timeFit[0], self.timeFit[1], self.timeFit[2])/3600, label='curve_fit')
+            ax1.scatter(self.sizes, self.times/3600, label='runs on computer')
+            ax1.plot(xs, self.fitLine(xs, self.timeFit[0], self.timeFit[1], self.timeFit[2])/3600, label='curve_fit')
             #if(numCells>0 and Nf>0):
                 #plt.scatter(numCells*Nf, time/3600, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Time')
-            plt.legend()
-            plt.tight_layout()
-            plt.show()
+            ax1.legend()
+            fig1.tight_layout()
             ## Memory plot
-            plt.scatter(self.sizes, self.mems, label='runs on computer')
-            plt.title('Memory Requirements by size')
-            plt.xlabel(r'# elements')
-            plt.ylabel('Memory [GB] (Approximate)')
-            plt.grid()
-            plt.plot(xs, self.fitLine(xs, self.memFit[0], self.memFit[1], self.memFit[2]), label='curve_fit')
+            fig2 = plt.figure()
+            ax2 = plt.subplot(1, 1, 1)
+            ax2.grid(True)
+            ax2.set_title('Memory Cost by Problem Size')
+            ax2.set_xlabel('# FEM Elements')
+            ax2.set_ylabel('Memory [GiB] (Approximate)')
+            ax2.scatter(self.sizes, self.mems, label='runs on computer')
+            ax2.plot(xs, self.fitLine(xs, self.memFit[0], self.memFit[1], self.memFit[2]), label='curve_fit')
             #if(numCells>0 and Nf>0):
                 #plt.scatter(numCells, mem, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Memory')
-            plt.legend()
-            plt.tight_layout()
+            ax2.legend()
+            fig2.tight_layout()
+            
             plt.show()
         
     def makePlotsSTD(self):

@@ -1,6 +1,6 @@
 This file describes what I need to run before/after using the jobscript.sh
-Can use 'projinfo' to see project, user, and time allocation (must first deactivate mamba/conda).
-#commented lines should only need to be run once, to set up/install packages on the submission node. Maybe need to run it every time I log in?
+Can use 'projinfo' to see project, user, and time allocation (must first deactivate mamba/conda). 'snicquota' shows storage quotas.
+#Installation should only need to be run once, to set up/install packages on the submission node. It needs to be activated every log-in, though.
 
 First download my python scripts from github with: 
 
@@ -30,16 +30,13 @@ spack external find openmpi
 spack install
 spack env deactivate
 spack env activate Scatt3D
-## must reactivate environment afterwards, or I get some libfabric 1.8 error
+## Must reactivate environment afterwards, or I get some libfabric 1.8 error
+## May get an error on libpressio or other packages - try adding it with the above flags, then spack concretize --force, then install again
 
-spack add py-psutil ## this puts me over the disk quota, somehow
-spack install
-## may get an error on libpressio or other packages - try adding it with the above flags, then spack concretize --force, then install again
-
-Once stuff is installed, must make sure the env is activated (and test the 'textExanple.py' script for ImportErrors) before running jobscript:
+Once stuff is installed, must make sure the env is activated (and test the 'textExample.py' script for ImportErrors) before running jobscript:
 . ./spack/share/spack/setup-env.sh ## when in the folder containing the spack folder
 spack env activate Scatt3D
-python testExample.py ## a quick testscript
+python testExample.py
 
 To run the jobscript:
 sbatch jobscript.sh
@@ -64,6 +61,8 @@ Some info:
 ## queue jobs sequentially with sbatch -d afterok:firstjobid run_script.sh
 
 
+##
+OLD STUFF BELOW - DEPRECATED
 ##
 Old way to install: use mamba/conda to install. This is easy and faster, but cannot use MPI across nodes.
 Can install mamba from https://github.com/conda-forge/miniforge#mambaforge, otherwise just use conda
