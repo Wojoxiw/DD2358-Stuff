@@ -16,7 +16,7 @@ Then install the needed packages in an env:
 module load foss
 module save ## to make this default so it autoloads
 
-# Actual installation (starting with deleting a previous one)
+# Actual installation (starting with deleting a previous one)  Removed installing py-pyvista on the cluster
 rm -rf spack
 rm -rf .spack
 git clone https://github.com/spack/spack.git
@@ -24,10 +24,13 @@ git clone https://github.com/spack/spack.git
 spack env create Scatt3D
 spack env activate Scatt3D
 spack add fenics-dolfinx+adios2 ^petsc+complex+mumps py-fenics-dolfinx libpressio cflags="-O3" fflags="-O3"
-spack add py-gmsh py-pyvista
+spack add py-gmsh py-scipy py-memory-profiler
 spack compiler find
 spack external find openmpi
 spack install
+spack env deactivate
+spack env activate Scatt3D
+## must reactivate environment afterwards, or I get some libfabric 1.8 error
 
 spack add py-psutil ## this puts me over the disk quota, somehow
 spack install

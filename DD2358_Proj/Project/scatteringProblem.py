@@ -7,7 +7,6 @@ import dolfinx
 import ufl
 import basix
 import functools
-import miepython
 from timeit import default_timer as timer
 from memory_profiler import memory_usage
 import gmsh
@@ -521,6 +520,9 @@ class Scatt3DProblem():
         :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0)
         :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
         '''
+        
+        import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+        
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank)):
                 print(f'Calculating farfield values...')
                 sys.stdout.flush()

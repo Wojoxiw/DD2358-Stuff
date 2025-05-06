@@ -10,6 +10,7 @@ from mpi4py import MPI
 import gmsh
 from matplotlib import pyplot as plt
 import functools
+import psutil
 import sys, petsc4py
 from petsc4py import PETSc
 import scipy

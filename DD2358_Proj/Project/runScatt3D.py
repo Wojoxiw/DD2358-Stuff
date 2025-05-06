@@ -22,6 +22,7 @@ petsc4py.init(sys.argv)
 from petsc4py import PETSc
 import scipy
 
+import psutil
 from memory_profiler import memory_usage
 from timeit import default_timer as timer
 import time
