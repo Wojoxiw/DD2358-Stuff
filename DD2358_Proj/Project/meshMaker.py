@@ -5,7 +5,6 @@ from mpi4py import MPI
 import numpy as np
 import dolfinx
 import gmsh
-import pyvista
 from scipy.constants import pi, c as c0
 from timeit import default_timer as timer
 import sys
@@ -321,6 +320,8 @@ class MeshData():
         '''
         Plots mesh partitions
         '''
+        import pyvista ## can I just import this here so it doesn't need to be installed on the cluster?
+        
         V = dolfinx.fem.functionspace(self.mesh, ('CG', 1))
         u = dolfinx.fem.Function(V)
         u.interpolate(lambda x: np.ones(x.shape[1])*self.comm.rank)

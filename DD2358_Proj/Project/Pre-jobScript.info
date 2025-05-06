@@ -4,10 +4,10 @@ Can use 'projinfo' to see project, user, and time allocation (must first deactiv
 
 First download my python scripts from github with: 
 
-#git clone -n --depth=1 --filter=tree:0 https://github.com/Wojoxiw/DD2358-Stuff
-#cd "DD2358-Stuff"
-#git sparse-checkout set --no-cone "/DD2358_Proj/Project"				
-#git checkout
+git clone -n --depth=1 --filter=tree:0 https://github.com/Wojoxiw/DD2358-Stuff
+cd "DD2358-Stuff"
+git sparse-checkout set --no-cone "/DD2358_Proj/Project"				
+git checkout
 ## to update the scripts (overwriting local changes {I make none})
 git fetch --all 
 git reset --hard origin/master
@@ -16,12 +16,14 @@ Then install the needed packages in an env:
 module load foss
 module save ## to make this default so it autoloads
 
-# Actual installation
+# Actual installation (starting with deleting a previous one)
+rm -rf spack
+rm -rf .spack
 git clone https://github.com/spack/spack.git
 . ./spack/share/spack/setup-env.sh
 spack env create Scatt3D
 spack env activate Scatt3D
-spack add fenics-dolfinx+adios2 ^petsc+complex+mumps py-fenics-dolfinx cflags="-O3" fflags="-O3"
+spack add fenics-dolfinx+adios2 ^petsc+complex+mumps py-fenics-dolfinx libpressio cflags="-O3" fflags="-O3"
 spack add py-gmsh py-pyvista
 spack compiler find
 spack external find openmpi
@@ -29,9 +31,9 @@ spack install
 
 spack add py-psutil ## this puts me over the disk quota, somehow
 spack install
-## may get an error on a package - install that with the above flags, the spack concretize --force
+## may get an error on libpressio or other packages - try adding it with the above flags, then spack concretize --force, then install again
 
-Once stuff is installed, must make sure the env is activated (and test the script for ImportErrors) before running jobscript:
+Once stuff is installed, must make sure the env is activated (and test the 'textExanple.py' script for ImportErrors) before running jobscript:
 . ./spack/share/spack/setup-env.sh ## when in the folder containing the spack folder
 spack env activate Scatt3D
 python testExample.py ## a quick testscript
@@ -72,7 +74,7 @@ pip install imageio[ffmpeg]
 ##
 
 Potential jobscript thing to send/retrieve data to node-local disks:
-: '
+
 ## NODE LOCAL DISK
 ## if using node-local disk, move files over to it before running, then back after
 srun -n $SLURM_NNODES -N $SLURM_NNODES cp -p runScatt3D.py $SNIC_TMP ## reads this file into the node-local disks/execution directories. I first update it with git pull origin master

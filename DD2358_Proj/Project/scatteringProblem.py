@@ -12,7 +12,6 @@ from timeit import default_timer as timer
 from memory_profiler import memory_usage
 import gmsh
 import sys
-import pyvista
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 import memTimeEstimation
 from matplotlib import pyplot as plt
