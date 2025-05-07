@@ -516,13 +516,14 @@ class Scatt3DProblem():
         if(self.verbosity>0 & self.comm.rank == self.model_rank):
             print(self.name+' DoFs view saved')
             
-    def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False):
+    def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False, showPlots=False):
         '''
         Calculates the farfield at each frequency point at at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True
         Returns an array of [E_theta, E_phi] at each angle
         :param reference: Whether this is being computed for the DUT case or the reference
         :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0)
         :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
+        :param showPlots: If True, plt.show(). Plots are still saved, though. This must be False for cluster use
         '''
         
         import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
@@ -600,7 +601,8 @@ class Scatt3DProblem():
                     plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     plt.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
-                    plt.show()
+                    if(showPlots):
+                        plt.show()
                     plt.clf()
                     
                 
@@ -626,6 +628,7 @@ class Scatt3DProblem():
                 plt.legend()
                 plt.grid()
                 plt.tight_layout()
-                plt.show()
+                if(showPlots):
+                    plt.show()
             
         return farfields
