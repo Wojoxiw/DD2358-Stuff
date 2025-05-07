@@ -590,15 +590,15 @@ class Scatt3DProblem():
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')
                     plt.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'Integrated Intensity', linewidth = 2.5)
                     
+                    ##Calculate Mie scattering
                     #===========================================================
-                    # ##Calculate Mie scattering
                     # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
                     # mie = np.zeros_like(angles[:, 1])
                     # for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
                     #     lambdat = c0/freq
                     #     x = 2*pi*meshData.object_radius/lambdat
                     #     mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
-                    #  plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
+                    # plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     #===========================================================
                      
                     plt.legend()
@@ -633,4 +633,4 @@ class Scatt3DProblem():
                 if(showPlots):
                     plt.show()
             
-        return farfields
+            return farfields
