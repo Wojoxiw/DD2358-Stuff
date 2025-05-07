@@ -89,7 +89,7 @@ if __name__ == '__main__':
         #prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
         
-    def testFarField(): ## run a spherica domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
+    def testFarField(): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=1.0, h=1/28, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
@@ -101,14 +101,12 @@ if __name__ == '__main__':
         angles = np.zeros((nvals, 2))
         angles[:, 0] = 90
         angles[:, 1] = np.linspace(0, 360, nvals)
-        prob.calcFarField(reference=True, angles = angles, compareToMie = True)
+        #prob.calcFarField(reference=True, angles = angles, compareToMie = True)
     
-    for b in range(30):
-        h = 1/(b+3)
-        testRun(h)
+    #testRun()
     #profilingMemsTimes()
     #actualProfilerRunning()
-    #testFarField()
+    testFarField()
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
     prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
