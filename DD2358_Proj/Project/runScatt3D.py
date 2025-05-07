@@ -53,6 +53,12 @@ if __name__ == '__main__':
     verbosity = 1
     MPInum = comm.size
     
+    
+    if(MPInum == 1): ## assume computing on local computer, not cluster
+        filename = 'localCompTimesMems.npz'
+    else:
+        filename = 'prevRuns.npz'
+    
     runName = 'testRun' # testing
     folder = 'data3D/'
     
@@ -81,7 +87,7 @@ if __name__ == '__main__':
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum)
             
     def testRun(h = 1/2): ## A quick testrun. If h is not specified, makes it tiny
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm)
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, object_geom='None', N_antennas=0)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
@@ -89,24 +95,28 @@ if __name__ == '__main__':
         #prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
         
-    def testFarField(): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
-        prevRuns = memTimeEstimation.runTimesMems(folder, comm)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=1.0, h=1/28, domain_geom='sphere', FF_surface = True)
+    def testFarField(h = 1/12, b=8): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
+        prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=1.0, h=h, domain_geom='sphere', FF_surface = True, PML_thickness = h*b)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', freqs = freqs, material_epsr=6)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, excitation = 'planewave', freqs = freqs, material_epsr=6)
         #prob.saveDofsView(prob.refMeshdata)
-        prob.saveEFieldsForAnim()
+        #prob.saveEFieldsForAnim()
         nvals = int(360/10)
         angles = np.zeros((nvals, 2))
         angles[:, 0] = 90
         angles[:, 1] = np.linspace(0, 360, nvals)
-        #prob.calcFarField(reference=True, angles = angles, compareToMie = True)
+        prob.calcFarField(reference=True, angles = angles, compareToMie = True)
+        prevRuns.memTimeAppend(prob)
     
-    #testRun()
+    #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
-    testFarField()
+    for k in range(5, 25):
+        for b in range(5, 15):
+            runName = 'testRun'+str(k)+str(b)
+            testFarField(h=1/k, b=b)
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
     prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)

@@ -490,7 +490,7 @@ class Scatt3DProblem():
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
                 xdmf.write_function(E, i)
         xdmf.close()
-        if(self.verbosity>0):
+        if(self.verbosity>0 & self.comm.rank == self.model_rank):
             print(self.name+' E-fields anim')
         
     def saveDofsView(self, meshData):
@@ -513,7 +513,7 @@ class Scatt3DProblem():
         vals.x.array[self.farfield_cells] = 1
         xdmf.write_function(vals, 0)
         xdmf.close()
-        if(self.verbosity>0):
+        if(self.verbosity>0 & self.comm.rank == self.model_rank):
             print(self.name+' DoFs view saved')
             
     def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False):
@@ -581,10 +581,10 @@ class Scatt3DProblem():
                     
                     farfields[b, i] = evalFs()
                 
-                if(compareToMie): ## first make some plots by angle
-                    print('theta',np.abs(farfields[b,:,0]))
-                    print('phi',np.abs(farfields[b,:,1]))
-                    print('intensity',np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2)
+                if(compareToMie and self.Nf < 3): ## make some plots by angle if few freqs. (assuming here that we have many angles)
+                    #print('theta',np.abs(farfields[b,:,0]))
+                    #print('phi',np.abs(farfields[b,:,1]))
+                    #print('intensity',np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2)
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')
                     plt.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'Integrated Intensity', linewidth = 2.5)
@@ -599,11 +599,12 @@ class Scatt3DProblem():
                      
                     plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     plt.legend()
+                    plt.savefig(self.dataFolder+self.name+'miecomp.png')
                     plt.show()
                     plt.clf()
                     
                 
-            if(compareToMie): ## then do plots by frequency for forward+backward scattering
+            if(compareToMie and self.Nf > 2): ## do plots by frequency for forward+backward scattering
                 ##Calculate Mie scattering
                 m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
                 mieForward = np.zeros_like(self.fvec)

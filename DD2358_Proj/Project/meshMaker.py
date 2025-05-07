@@ -66,7 +66,7 @@ class MeshData():
         :param defect_geom: Geometry of the defect.
         :param domain_radius:
         :param domain_height:
-        :param PML_thickness: If not specified, calculated to give 12 mesh cells between the domain and the edge of the PML
+        :param PML_thickness: If not specified, calculated to give x mesh cells between the domain and the edge of the PML
         :param dome_height:
         :param antenna_width: Width of antenna apertures, 22.86 mm
         :param antenna_height: Height of antenna apertures
@@ -99,7 +99,7 @@ class MeshData():
         
         
         if(PML_thickness == 0): ## if not specified, calculate it
-            PML_thickness = self.h*12
+            PML_thickness = h*15 ## try to have some mesh cells in thickness
         
         ## Set up geometry variables - in units of lambda0 unless otherwise specified
         if(self.domain_geom == 'domedCyl'): ## a cylinder with an oblate-spheroid 'dome' added over and underneath
