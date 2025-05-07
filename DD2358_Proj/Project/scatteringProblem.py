@@ -490,6 +490,8 @@ class Scatt3DProblem():
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
                 xdmf.write_function(E, i)
         xdmf.close()
+        if(self.verbosity>0):
+            print(self.name+' E-fields anim')
         
     def saveDofsView(self, meshData):
         '''
@@ -511,6 +513,8 @@ class Scatt3DProblem():
         vals.x.array[self.farfield_cells] = 1
         xdmf.write_function(vals, 0)
         xdmf.close()
+        if(self.verbosity>0):
+            print(self.name+' DoFs view saved')
             
     def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False):
         '''

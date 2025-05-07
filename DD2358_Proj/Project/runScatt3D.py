@@ -95,7 +95,7 @@ if __name__ == '__main__':
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, excitation = 'planewave', freqs = freqs, material_epsr=6)
-        prob.saveDofsView(prob.refMeshdata)
+        #prob.saveDofsView(prob.refMeshdata)
         prob.saveEFieldsForAnim()
         nvals = int(360/10)
         angles = np.zeros((nvals, 2))
