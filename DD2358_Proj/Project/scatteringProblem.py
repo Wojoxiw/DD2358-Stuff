@@ -526,8 +526,6 @@ class Scatt3DProblem():
         :param showPlots: If True, plt.show(). Plots are still saved, though. This must be False for cluster use
         '''
         
-        #import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-        
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank)):
                 print(f'Calculating farfield values...')
                 sys.stdout.flush()
@@ -592,15 +590,17 @@ class Scatt3DProblem():
                     
                     #===========================================================
                     # ##Calculate Mie scattering
+                    # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
                     # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
                     # mie = np.zeros_like(angles[:, 1])
                     # for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
                     #     lambdat = c0/freq
                     #     x = 2*pi*meshData.object_radius/lambdat
                     #     mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
-                    # plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     #===========================================================
-                     
+                        
+                    mie = np.loadtxt('mietest.out')
+                    plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     plt.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
                     if(showPlots):
