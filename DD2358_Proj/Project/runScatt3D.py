@@ -106,7 +106,7 @@ if __name__ == '__main__':
         angles = np.zeros((nvals, 2))
         angles[:, 0] = 90
         angles[:, 1] = np.linspace(0, 360, nvals)
-        prob.calcFarField(reference=True, angles = angles, compareToMie = True, showPlots=True)
+        prob.calcFarField(reference=True, angles = angles, compareToMie = True, showPlots=False)
         prevRuns.memTimeAppend(prob)
     
     #testRun(h=1/20)

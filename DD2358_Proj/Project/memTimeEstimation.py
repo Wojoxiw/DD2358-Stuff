@@ -29,7 +29,7 @@ class runTimesMems():
             if os.path.isfile(self.fpath):
                 self.prevRuns = np.load(self.fpath, allow_pickle=True)['prevRuns']
                 if(self.comm.rank == 0):
-                    print(f'Loaded previous run data from {len(self.prevRuns)} runs')
+                    print(f'Loaded previous run data from {len(self.prevRuns)} runs ({filename})')
                     
             if(len(otherPrevs) > 0): ## if there are other previous runs to load
                 for other in otherPrevs:
