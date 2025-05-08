@@ -113,8 +113,9 @@ if __name__ == '__main__':
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
-    for k in range(20, 35, 3):
-        for b in range(8, 18, 2):
+    filename = 'prevRuns.npz'
+    for k in range(15, 25, 3):
+        for b in range(6, 15, 2):
             runName = 'testRun'+str(k)+str(b)
             testFarField(h=1/k, b=b)
     
