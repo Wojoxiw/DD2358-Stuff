@@ -34,6 +34,7 @@ spack env activate Scatt3D
 ## May get an error on libpressio or other packages - try adding it with the above flags, then spack concretize --force, then install again
 
 Once stuff is installed, must make sure the env is activated (and test the 'textExample.py' script for ImportErrors) before running jobscript:
+module load foss
 . ./spack/share/spack/setup-env.sh ## when in the folder containing the spack folder
 spack env activate Scatt3D
 python testExample.py

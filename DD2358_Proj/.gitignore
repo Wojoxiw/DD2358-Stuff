@@ -4,4 +4,4 @@
 *.prefs
 *.pyc
 */data3DLUNARC
-*.png
+*/.settings

@@ -1,5 +1,5 @@
 # encoding: utf-8
-## this file makes the mesh
+## this file computes the simulation
 
 from mpi4py import MPI
 import numpy as np

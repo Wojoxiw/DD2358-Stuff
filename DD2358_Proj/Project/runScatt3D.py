@@ -2,7 +2,7 @@
 ### Modification of scatt2d to handle 3d geometry
 # Stripped down and rewritten for DD2358 course
 #
-# Adapted from 2D code started by Daniel Sjoberg, 2024-12-13
+# Adapted from 2D code started by Daniel Sjoberg, (https://github.com/dsjoberg-git/rotsymsca, https://github.com/dsjoberg-git/ekas3d) approx. 2024-12-13 
 # Alexandros Pallaris, after that
 
 import os
@@ -100,7 +100,7 @@ if __name__ == '__main__':
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=6)
-        prob.saveDofsView(prob.refMeshdata)
+        #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         nvals = int(360/10)
         angles = np.zeros((nvals, 2))
