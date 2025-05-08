@@ -58,6 +58,7 @@ class Scatt3DProblem():
                  excitation = 'antennas', # if 'planewave', sends in a planewave from the +x-axis, otherwise antenna excitation as normal
                  PW_dir = np.array([-1, 0, 0]), ## incident direction of the plane-wave, if used above. Default is coming in from the x-axis
                  PW_pol = np.array([0, 0, 1]), ## incident polarization of the plane-wave, if used above. Default is along the z-axis
+                 makeOptVects = True, ## if True, compute and saves the optimization vectors. Turn False if not needed
                  ):
         """Initialize the problem."""
         
@@ -68,6 +69,7 @@ class Scatt3DProblem():
         self.model_rank = model_rank
         self.verbosity = verbosity
         
+        self.makeOptVects = makeOptVects
         self.ErefEdut = ErefEdut
         
         self.tdim = 3                             # Dimension of triangles/tetraedra. 3 for 3D
@@ -104,7 +106,7 @@ class Scatt3DProblem():
             self.DUTMeshdata = DUTMeshdata
             self.DUTMeshdata.mesh.topology.create_connectivity(self.tdim, self.tdim)
             self.DUTMeshdata.mesh.topology.create_connectivity(self.fdim, self.tdim) ## required when there are no antennas, for some reason
-
+            
         # Calculate solutions
         if(computeImmediately):
             self.compute(computeRef)
@@ -126,8 +128,9 @@ class Scatt3DProblem():
         self.CalculatePML(meshData, self.k0) ## this is recalculated for each frequency, in ComputeSolutions - run it here just to initialize variables (not sure if needed)
         mem_usage = memory_usage((self.ComputeSolutions, (meshData,), {'computeRef':True,}), max_usage = True)/1000 ## track the memory usage here
         #self.ComputeSolutions(meshData, computeRef=True)
-        self.makeOptVectors(meshData)
         self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
+        if(self.makeOptVects):
+            self.makeOptVectors(meshData)
         
         if(self.verbosity > 1):
             print(f'Max. memory: {mem_usage:.3f} GiB -- '+f"{self.comm.rank=} {self.comm.size=}")
@@ -519,7 +522,7 @@ class Scatt3DProblem():
     def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False, showPlots=False):
         '''
         Calculates the farfield at each frequency point at at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True
-        Returns an array of [E_theta, E_phi] at each angle
+        Returns an array of [E_theta, E_phi] at each angle, to the master process only
         :param reference: Whether this is being computed for the DUT case or the reference
         :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0)
         :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
@@ -536,57 +539,65 @@ class Scatt3DProblem():
             meshData = self.DUTMeshdata
             sols = self.solutions_dut
             
-        if(self.comm.rank == 0): ## should be easy to use all ranks, but I don't need this yet
             
-            numAngles = np.shape(angles)[0]
-            prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
-            n = ufl.FacetNormal(meshData.mesh)('+')
-            signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
-            exp_kr = dolfinx.fem.Function(self.ScalarSpace)
-            farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
-            for b in range(self.Nf):
-                freq = self.fvec[b]
-                k = 2*np.pi*freq/c0
-                E = sols[b][0]('+')
-                for i in range(numAngles):
-                    theta = angles[i,0]*pi/180 # convert to radians first
-                    phi = angles[i,1]*pi/180
-                    khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
-                    phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
-                    thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
-                    
-                    #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here
-                    eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
-                    
-                    H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
-                    
-                    ## can only integrate scalars
-                    self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                    self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                    
-                    #self.F_theta = 1*self.dS_farfield ## calculate area
-                    #self.F_phi = 1*self.dS_farfield ## calculate area
-                    
-                    khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
-                    def evalFs(): ## evaluates the farfield in some given direction khat
-                        exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
-                        prefactor.value = 1j*k/(4*pi)
-                        
-                        F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
-                        F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
-                        
-                        #return(F_thetaE, F_phiE, F_thetaH, F_phiH)
-                        return(F_theta, F_phi)
-                    
-                    farfields[b, i] = evalFs()
+        numAngles = np.shape(angles)[0]
+        prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
+        n = ufl.FacetNormal(meshData.mesh)('+')
+        signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
+        exp_kr = dolfinx.fem.Function(self.ScalarSpace)
+        farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
+        for b in range(self.Nf):
+            freq = self.fvec[b]
+            k = 2*np.pi*freq/c0
+            E = sols[b][0]('+')
+            for i in range(numAngles):
+                theta = angles[i,0]*pi/180 # convert to radians first
+                phi = angles[i,1]*pi/180
+                khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
+                phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
+                thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
                 
-                if(compareToMie and self.Nf < 3): ## make some plots by angle if few freqs. (assuming here that we have many angles)
+                #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here
+                eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
+                
+                H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
+                
+                ## can only integrate scalars
+                self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
+                self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
+                
+                #self.F_theta = 1*self.dS_farfield ## calculate area
+                #self.F_phi = 1*self.dS_farfield ## calculate area
+                
+                khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
+                def evalFs(): ## evaluates the farfield in some given direction khat
+                    exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
+                    prefactor.value = 1j*k/(4*pi)
+                    
+                    F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
+                    F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
+                    
+                    #return(F_thetaE, F_phiE, F_thetaH, F_phiH)
+                    return np.array((F_theta, F_phi))
+                
+                farfieldpart = evalFs()
+                farfieldparts = self.comm.gather(farfieldpart, root=self.model_rank)
+                if(self.comm.rank == 0): ## assemble each part as it is made
+                    farfields[b, i] = sum(farfieldparts)
+        
+        if(self.comm.rank == 0): ## plotting and returning
+            
+                                        
+            if(compareToMie and self.Nf < 3): ## make some plots by angle if few freqs. (assuming here that we have many angles)
+                for b in range(self.Nf):
+                    fig = plt.figure()
+                    ax1 = plt.subplot(1, 1, 1)
                     #print('theta',np.abs(farfields[b,:,0]))
                     #print('phi',np.abs(farfields[b,:,1]))
                     #print('intensity',np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2)
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
-                    #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')
-                    plt.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'Integrated Intensity', linewidth = 2.5)
+                    #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')'
+                    ax1.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'Integrated Intensity', linewidth = 2.5)
                     
                     #===========================================================
                     # ##Calculate Mie scattering
@@ -600,14 +611,14 @@ class Scatt3DProblem():
                     #===========================================================
                         
                     mie = np.loadtxt('mietest.out')
-                    plt.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
-                    plt.legend()
+                    ax1.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
+                    ax1.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
                     if(showPlots):
                         plt.show()
                     plt.clf()
-                    
-                
+        
+            
             if(compareToMie and self.Nf > 2): ## do plots by frequency for forward+backward scattering
                 ##Calculate Mie scattering
                 m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
@@ -632,5 +643,5 @@ class Scatt3DProblem():
                 plt.tight_layout()
                 if(showPlots):
                     plt.show()
-            
-            return farfields
+        
+                return farfields

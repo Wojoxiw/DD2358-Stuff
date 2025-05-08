@@ -119,7 +119,7 @@ class MeshData():
             self.domain_radius = domain_radius * self.lambda0
             self.PML_radius = self.domain_radius + PML_thickness * self.lambda0
             if(self.FF_surface):
-                self.FF_surface_radius = self.domain_radius - self.h*2 ## just a bit less than the domain's radius
+                self.FF_surface_radius = self.domain_radius - self.h*4 ## just a bit less than the domain's radius
         else:
             print('Invalid geometry type in MeshData, exiting...')
             exit()

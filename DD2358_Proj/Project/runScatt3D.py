@@ -9,9 +9,9 @@ import os
 import numpy as np
 import dolfinx, ufl, basix
 import dolfinx.fem.petsc
-os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
-os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
-os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
+#os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
+#os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
+#os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
 from mpi4py import MPI
 import gmsh
 from matplotlib import pyplot as plt
@@ -53,8 +53,7 @@ if __name__ == '__main__':
     verbosity = 1
     MPInum = comm.size
     
-    
-    if(MPInum == 1): ## assume computing on local computer, not cluster
+    if(len(sys.argv) == 1): ## assume computing on local computer, not cluster. In jobscript for cluster, give a dummy argument
         filename = 'localCompTimesMems.npz'
     else:
         filename = 'prevRuns.npz'
@@ -100,27 +99,27 @@ if __name__ == '__main__':
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=2.0, h=h, domain_geom='sphere', FF_surface = True, PML_thickness = h*b)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, excitation = 'planewave', freqs = freqs, material_epsr=6)
-        #prob.saveDofsView(prob.refMeshdata)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=6)
+        prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         nvals = int(360/10)
         angles = np.zeros((nvals, 2))
         angles[:, 0] = 90
         angles[:, 1] = np.linspace(0, 360, nvals)
-        prob.calcFarField(reference=True, angles = angles, compareToMie = True, showPlots=False)
+        prob.calcFarField(reference=True, angles = angles, compareToMie = True, showPlots=True)
         prevRuns.memTimeAppend(prob)
     
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
-    filename = 'prevRuns.npz'
+    
     for k in range(15, 25, 3):
         for b in range(6, 15, 2):
             runName = 'testRun'+str(k)+str(b)
             testFarField(h=1/k, b=b)
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
-    prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
+    #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
     #prevRuns.makePlots()
     #prevRuns.makePlotsSTD()
     
