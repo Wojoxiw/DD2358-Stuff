@@ -115,7 +115,7 @@ if __name__ == '__main__':
     
     for k in range(15, 25, 3):
         for b in range(6, 15, 2):
-            runName = 'testRun'+str(k)+str(b)
+            runName = 'testRunfaraway(8h)FF'+str(k)+str(b)
             testFarField(h=1/k, b=b)
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
