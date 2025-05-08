@@ -310,7 +310,7 @@ class MeshData():
         self.farfield_surface_marker = self.comm.bcast(farfield_surface_marker, root=self.model_rank)
     
         
-        self.mesh, self.subdomains, self.boundaries = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm=self.comm, rank=self.model_rank, gdim=self.tdim)
+        self.mesh, self.subdomains, self.boundaries = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm=self.comm, rank=self.model_rank, gdim=self.tdim, partitioner=dolfinx.mesh.create_cell_partitioner(dolfinx.cpp.mesh.GhostMode.shared_facet))
         gmsh.finalize()
         
         self.ncells = self.mesh.topology.index_map(self.mesh.topology.dim).size_global ## all cells, rather than only those in this MPI process

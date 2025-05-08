@@ -644,4 +644,4 @@ class Scatt3DProblem():
                 if(showPlots):
                     plt.show()
         
-                return farfields
+            return farfields
