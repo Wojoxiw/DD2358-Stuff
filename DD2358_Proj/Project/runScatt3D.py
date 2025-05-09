@@ -96,7 +96,7 @@ if __name__ == '__main__':
         
     def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=1.0, h=h, domain_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=1.8, h=h, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=6)
@@ -114,7 +114,7 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     
     for k in range(15, 40, 2):
-        runName = 'testRunlessfaraway(5hbiggerPML)FF'+str(k)
+        runName = 'testRunbiggerdomainfaraway(10hawayFF)FF'+str(k)
         testFarField(h=1/k)
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)

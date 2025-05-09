@@ -203,7 +203,7 @@ class Scatt3DProblem():
         :param k: Frequency used for coordinate stretching.
         '''
         # Set up the PML
-        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=np.exp(-16)):
+        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=np.exp(-10)):
             '''
             Calculates the PML stretching of a coordinate
             :param y: the coordinate to be stretched
@@ -499,7 +499,7 @@ class Scatt3DProblem():
         
     def saveDofsView(self, meshData):
         '''
-        Saves the dofs with different numbers for viewing in ParaView
+        Saves the dofs with different numbers for viewing in ParaView. This hangs on the cluster, for unknown reasons
         :param meshData: Whichever meshData to use
         '''
         self.InitializeFEM(meshData) ## so that this can be done before calculations
@@ -646,5 +646,5 @@ class Scatt3DProblem():
                     plt.show()
                     
             if(self.verbosity > 1):
-                print(f'Farfields calculated in {timer()-t1} s')
+                print(f'Farfields calculated in {timer()-t1:.3f} s')
             return farfields
