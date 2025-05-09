@@ -50,7 +50,7 @@ if __name__ == '__main__':
     # MPI settings
     comm = MPI.COMM_WORLD
     model_rank = 0
-    verbosity = 1
+    verbosity = 2 ## 3 will print everything. 2, most things. 1, just the main process stuff.
     MPInum = comm.size
     
     if(len(sys.argv) == 1): ## assume computing on local computer, not cluster. In jobscript for cluster, give a dummy argument
@@ -60,7 +60,7 @@ if __name__ == '__main__':
     
     runName = 'testRun' # testing
     folder = 'data3D/'
-    if(verbosity>1):
+    if(verbosity>2):
         print(f"{comm.rank=} {comm.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
     if(comm.rank == model_rank):
         print('Expected number of MPI processes:', MPInum)
@@ -94,9 +94,9 @@ if __name__ == '__main__':
         #prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
         
-    def testFarField(h = 1/12, b=8): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
+    def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=2.0, h=h, domain_geom='sphere', FF_surface = True, PML_thickness = h*b)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.34, domain_radius=1.0, h=h, domain_geom='sphere', FF_surface = True, PML_thickness = h*5)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=6)
@@ -113,10 +113,9 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     
-    for k in range(15, 25, 3):
-        for b in range(6, 15, 2):
-            runName = 'testRunlessfaraway(4h)FF'+str(k)+str(b)
-            testFarField(h=1/k, b=b)
+    for k in range(15, 28, 2):
+        runName = 'testRunlessfaraway(2h)FF'+str(k)
+        testFarField(h=1/k)
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)

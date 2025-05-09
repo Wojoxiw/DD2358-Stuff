@@ -203,7 +203,7 @@ class Scatt3DProblem():
         :param k: Frequency used for coordinate stretching.
         '''
         # Set up the PML
-        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=1e-10):
+        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=np.exp**-8):
             '''
             Calculates the PML stretching of a coordinate
             :param y: the coordinate to be stretched
@@ -212,7 +212,8 @@ class Scatt3DProblem():
             :param x_dom: size of domain
             :param x_pml: size of pml
             :param n: order
-            :param R0: intended damping (based on relative strength of reflection?)
+            :param R0: intended damping (based on relative strength of reflection?) According to 'THE_ELECTRICAL_ENGINEERING_HANDBOOKS', section 9.7: Through extensive numerical experimentation, Gedney
+            (1996) and He (1997) found that, for a broad range of applications, an optimal choice for a 10-cell-thick, polynomial-graded PML is R(0) = e^-16. For a 5-cell-thick PML, R(0) = e^-8 is optimal.
             '''
             return y*(1 - 1j*(n + 1)*np.log(1/R0)/(2*k*np.abs(x_pml - x_dom))*((x - x_dom)/(x_pml - x_dom))**n)
 
@@ -379,14 +380,14 @@ class Scatt3DProblem():
             return S, solutions
         
         if(computeRef):
-            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
                 print(f'Rank {self.comm.rank}: Computing REF solutions')
             sys.stdout.flush()
                 
             self.epsr.x.array[:] = self.epsr_array_ref
             self.S_ref, self.solutions_ref = ComputeFields()    
         else:
-            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
                 print(f'Rank {self.comm.rank}: Computing DUT solutions')
             sys.stdout.flush()
             
@@ -399,7 +400,7 @@ class Scatt3DProblem():
         Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh
         '''
         
-        if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
+        if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
             print(f'Rank {self.comm.rank}: Computing optimization vectors')
             sys.stdout.flush()
         
@@ -437,7 +438,7 @@ class Scatt3DProblem():
         self.epsr.x.array[:] = self.epsr_array_dut
         xdmf.write_function(self.epsr, -1)
         for nf in range(self.Nf):
-            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) and (meshData.N_antennas > 0) ):
+            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) and (meshData.N_antennas > 0) ):
                 print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                 sys.stdout.flush()
             k0 = 2*np.pi*self.fvec[nf]/c0
@@ -528,7 +529,7 @@ class Scatt3DProblem():
         :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
         :param showPlots: If True, plt.show(). Plots are still saved, though. This must be False for cluster use
         '''
-        
+        t1 = timer()
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank)):
                 print(f'Calculating farfield values...')
                 sys.stdout.flush()
@@ -610,7 +611,7 @@ class Scatt3DProblem():
                     #     mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
                     #===========================================================
                         
-                    mie = np.loadtxt('mietest.out')
+                    mie = np.loadtxt('mietest.out') ## data for object_radius = 0.34, material_epsr=6
                     ax1.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     ax1.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
@@ -643,5 +644,7 @@ class Scatt3DProblem():
                 plt.tight_layout()
                 if(showPlots):
                     plt.show()
-        
+                    
+            if(self.verbosity > 1):
+                print(f'Farfields calculated in {timer()-t1} s')
             return farfields

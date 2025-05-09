@@ -99,7 +99,7 @@ class MeshData():
         
         
         if(PML_thickness == 0): ## if not specified, calculate it
-            PML_thickness = h*15 ## try to have some mesh cells in thickness
+            PML_thickness = h*5 ## try to have some mesh cells in thickness
         
         ## Set up geometry variables - in units of lambda0 unless otherwise specified
         if(self.domain_geom == 'domedCyl'): ## a cylinder with an oblate-spheroid 'dome' added over and underneath
@@ -119,7 +119,7 @@ class MeshData():
             self.domain_radius = domain_radius * self.lambda0
             self.PML_radius = self.domain_radius + PML_thickness * self.lambda0
             if(self.FF_surface):
-                self.FF_surface_radius = self.domain_radius - self.h*4 ## just a bit less than the domain's radius
+                self.FF_surface_radius = self.domain_radius - self.h*2 ## just a bit less than the domain's radius
         else:
             print('Invalid geometry type in MeshData, exiting...')
             exit()
