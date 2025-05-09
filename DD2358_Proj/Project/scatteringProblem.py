@@ -132,7 +132,7 @@ class Scatt3DProblem():
         if(self.makeOptVects):
             self.makeOptVectors(meshData)
         
-        if(self.verbosity > 1):
+        if(self.verbosity > 2):
             print(f'Max. memory: {mem_usage:.3f} GiB -- '+f"{self.comm.rank=} {self.comm.size=}")
         mems = self.comm.gather(mem_usage, root=self.model_rank)
         if (self.comm.rank == self.model_rank):
@@ -326,7 +326,7 @@ class Scatt3DProblem():
             S = np.zeros((self.Nf, meshData.N_antennas, meshData.N_antennas), dtype=complex)
             solutions = []
             for nf in range(self.Nf):
-                if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 1) ):
+                if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
                     print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
                     sys.stdout.flush()
                 k0 = 2*np.pi*self.fvec[nf]/c0

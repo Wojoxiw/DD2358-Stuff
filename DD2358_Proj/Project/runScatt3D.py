@@ -113,7 +113,7 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     
-    for k in range(15, 28, 2):
+    for k in range(15, 40, 2):
         runName = 'testRunlessfaraway(2h)FF'+str(k)
         testFarField(h=1/k)
     
