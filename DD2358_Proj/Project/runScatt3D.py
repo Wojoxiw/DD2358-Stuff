@@ -114,7 +114,7 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     
     for k in range(15, 40, 2):
-        runName = 'testRunlessfaraway(2h)FF'+str(k)
+        runName = 'testRunmorefaraway(5h)FF'+str(k)
         testFarField(h=1/k)
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
