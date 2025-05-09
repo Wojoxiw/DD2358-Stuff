@@ -203,7 +203,7 @@ class Scatt3DProblem():
         :param k: Frequency used for coordinate stretching.
         '''
         # Set up the PML
-        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=np.exp**-8):
+        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=np.exp(-8)):
             '''
             Calculates the PML stretching of a coordinate
             :param y: the coordinate to be stretched
