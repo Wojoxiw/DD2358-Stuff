@@ -59,9 +59,10 @@ class Scatt3DProblem():
                  PW_dir = np.array([-1, 0, 0]), ## incident direction of the plane-wave, if used above. Default is coming in from the x-axis
                  PW_pol = np.array([0, 0, 1]), ## incident polarization of the plane-wave, if used above. Default is along the z-axis
                  makeOptVects = True, ## if True, compute and saves the optimization vectors. Turn False if not needed
+                 testf = 0
                  ):
         """Initialize the problem."""
-        
+        self.testf = testf
         self.dataFolder = dataFolder
         self.name = name
         self.MPInum = MPInum                      # Number of MPI processes (used for estimating computational costs)
@@ -126,7 +127,7 @@ class Scatt3DProblem():
         self.InitializeFEM(meshData)
         self.InitializeMaterial(meshData)
         self.CalculatePML(meshData, self.k0) ## this is recalculated for each frequency, in ComputeSolutions - run it here just to initialize variables (not sure if needed)
-        mem_usage = memory_usage((self.ComputeSolutions, (meshData,), {'computeRef':True,}), max_usage = True)/1000 ## track the memory usage here
+        mem_usage = memory_usage((self.ComputeSolutions, (meshData,), {'computeRef':computeRef,}), max_usage = True)/1000 ## track the memory usage here
         #self.ComputeSolutions(meshData, computeRef=True)
         self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
         if(self.makeOptVects):
@@ -154,7 +155,7 @@ class Scatt3DProblem():
         self.dx_dom = self.dx((meshData.domain_marker, meshData.mat_marker, meshData.defect_marker))
         self.dx_pml = self.dx(meshData.pml_marker)
         self.ds = ufl.Measure('ds', domain=meshData.mesh, subdomain_data=meshData.boundaries)
-        self.dS = ufl.Measure('dS', domain=meshData.mesh, subdomain_data=meshData.boundaries) ## capital S for outer boundaries?
+        self.dS = ufl.Measure('dS', domain=meshData.mesh, subdomain_data=meshData.boundaries) ## capital S for internal facets (shared between two cells?)
         self.ds_antennas = [self.ds(m) for m in meshData.antenna_surface_markers]
         self.ds_pec = self.ds(meshData.pec_surface_marker)
         self.Ezero = dolfinx.fem.Function(self.Vspace)
@@ -460,7 +461,7 @@ class Scatt3DProblem():
     def saveEFieldsForAnim(self, Nframes = 50, removePML = True):
         '''
         Saves the E-field magnitudes for the final solution into .xdmf, for a number of different phase factors to create an animation in paraview
-        Uses the reference mesh and fields. If removePML, set the values within the PML to NaN
+        Uses the reference mesh and fields. If removePML, set the values within the PML to 0 (can also be NaN, etc.)
         '''
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
         meshData = self.refMeshdata # use the ref case
@@ -489,7 +490,8 @@ class Scatt3DProblem():
             xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
             E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
             xdmf.write_mesh(meshData.mesh)
-            E.x.array[pml_dofs] = 0#np.nan ## use the ScalarSpace one
+            if(removePML):
+                E.x.array[pml_dofs] = 0#np.nan ## use the ScalarSpace one
             for i in range(Nframes):
                 E.x.array[:] = E.x.array*np.exp(1j*2*pi/Nframes)
                 xdmf.write_function(E, i)
@@ -561,7 +563,7 @@ class Scatt3DProblem():
                 #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here
                 eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
                 
-                H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
+                H = -1/(1j*k*eta0)*ufl.curl(E)*self.testf ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
                 
                 ## can only integrate scalars
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
@@ -587,7 +589,8 @@ class Scatt3DProblem():
                     farfields[b, i] = sum(farfieldparts)
         
         if(self.comm.rank == 0): ## plotting and returning
-            
+            if(self.verbosity > 1):
+                print(f'Farfields calculated in {timer()-t1:.3f} s')
                                         
             if(compareToMie and self.Nf < 3): ## make some plots by angle if few freqs. (assuming here that we have many angles)
                 for b in range(self.Nf):
@@ -598,7 +601,8 @@ class Scatt3DProblem():
                     #print('intensity',np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2)
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')'
-                    ax1.plot(angles[:, 1], np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2, label = 'Integrated Intensity', linewidth = 2.5)
+                    mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
+                    ax1.plot(angles[:, 1], mag/np.max(mag), label = 'Integrated Intensity', linewidth = 2.5)
                     
                     #===========================================================
                     # ##Calculate Mie scattering
@@ -609,10 +613,11 @@ class Scatt3DProblem():
                     #     lambdat = c0/freq
                     #     x = 2*pi*meshData.object_radius/lambdat
                     #     mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
+                    # np.savetxt('mietest.out', mie)
                     #===========================================================
-                        
+                    
                     mie = np.loadtxt('mietest.out') ## data for object_radius = 0.34, material_epsr=6
-                    ax1.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
+                    ax1.plot(angles[:, 1], mie/np.max(mie), label = 'Miepython Intensity', linewidth = 2.5)
                     ax1.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
                     if(showPlots):
@@ -644,7 +649,5 @@ class Scatt3DProblem():
                 plt.tight_layout()
                 if(showPlots):
                     plt.show()
-                    
-            if(self.verbosity > 1):
-                print(f'Farfields calculated in {timer()-t1:.3f} s')
+            
             return farfields
