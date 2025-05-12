@@ -125,7 +125,7 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/5)
-    for testf in np.linspace(-4, 4, 100):
+    for testf in np.linspace(-4, 4, 50):
         runName = 'testwithHtimes'+str(testf)
         testFarField(h=1/25, testf=testf)
     
