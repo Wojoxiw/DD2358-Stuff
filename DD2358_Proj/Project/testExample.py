@@ -76,7 +76,7 @@ L2_error = dolfinx.fem.form(ufl.dot(uh-u_ex, uh-u_ex) * ufl.dx(metadata={"quadra
 local_error = dolfinx.fem.assemble_scalar(L2_error)
 global_error = np.sqrt(mesh.comm.allreduce(local_error, op=MPI.SUM))
 max_error = mesh.comm.allreduce(np.max(np.abs(u_c.x.array-uh.x.array)))
-print('glob, max erorrs:', global_error, max_error)
+print('global, max erors (max seems to be around e-16, glob. e-3):', global_error, max_error)
 
 print('done')
 
