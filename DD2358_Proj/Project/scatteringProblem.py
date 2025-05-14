@@ -589,7 +589,7 @@ class Scatt3DProblem():
                 ## can only integrate scalars
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                
+                ## try only half-sphere (forward or backward)
                 #self.F_theta = 1*self.dS_farfield ## calculate area
                 #self.F_phi = 1*self.dS_farfield ## calculate area
                 
