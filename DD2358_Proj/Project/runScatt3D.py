@@ -30,7 +30,7 @@ import sys
 import meshMaker
 import scatteringProblem
 import memTimeEstimation
-#import postProcessing
+import postProcessing
 
 #===============================================================================
 # ##line profiling
@@ -97,21 +97,21 @@ if __name__ == '__main__':
         
     def testRun2(h = 1/15): ## Testing toward postprocessing stuff
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, object_geom='None', N_antennas=1)
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=5)
+        dutMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = False, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=5)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         #refMesh.plotMeshPartition()
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName, excitation = 'planewave')
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, DUTMeshdata=dutMesh, computeBoth=True, verbosity = verbosity, MPInum = MPInum, name = runName, Nf = 6)
         prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
-        prob.compute(computeRef=False) ## compute DUT too
-        #postProcessing.testSVD(prob)
+        postProcessing.testSVD(prob.dataFolder+prob.name)
         
-    def testFarField(h = 1/12, testf=1): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
+    def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.24, domain_radius=0.8, h=h, domain_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.65, domain_radius=1.3, PML_thickness=0.35, h=h, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=3, testf=testf)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=3.5)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         nvals = int(360/4)
@@ -124,11 +124,12 @@ if __name__ == '__main__':
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
-    #testRun2(h=1/5)
+    #testRun2(h=1/10)
     #testFarField(h=1/10)
-    for testf in np.linspace(-5, 6, 120):
-        runName = 'BtestwithHtimes'+str(testf)
-        testFarField(h=1/25, testf=testf)
+    
+    for k in np.arange(10, 35):
+        runName = 'test-h'+str(k)
+        testFarField(h=1/k)
     
     #===========================================================================
     # for k in range(15, 40, 2):
@@ -137,7 +138,7 @@ if __name__ == '__main__':
     #===========================================================================
     
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
-    #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs)
+    #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs, filename = filename)
     #prevRuns.makePlots()
     #prevRuns.makePlotsSTD()
     

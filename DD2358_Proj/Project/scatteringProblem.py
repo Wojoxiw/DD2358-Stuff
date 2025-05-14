@@ -14,6 +14,7 @@ import sys
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 import memTimeEstimation
 from matplotlib import pyplot as plt
+from matplotlib.collections import _MeshData
 eta0 = np.sqrt(mu0/eps0)
 
 #===============================================================================
@@ -41,7 +42,7 @@ class Scatt3DProblem():
                  mur_bkg=1,           # Permeability of the background medium
                  material_epsr=3.0*(1 - 0.01j),  # Permittivity of object
                  material_mur=1+0j,   # Permeability of object
-                 defect_epsr=2.5*(1 - 0.01j),      # Permittivity of defect
+                 defect_epsr=5.5*(1 - 0.01j),      # Permittivity of defect
                  defect_mur=1+0j,       # Permeability of defect
                  fem_degree=1,            # Degree of finite elements
                  model_rank=0,        # Rank of the master model - for saving, plotting, etc.
@@ -59,10 +60,10 @@ class Scatt3DProblem():
                  PW_dir = np.array([-1, 0, 0]), ## incident direction of the plane-wave, if used above. Default is coming in from the x-axis
                  PW_pol = np.array([0, 0, 1]), ## incident polarization of the plane-wave, if used above. Default is along the z-axis
                  makeOptVects = True, ## if True, compute and saves the optimization vectors. Turn False if not needed
-                 testf = 0
+                 computeBoth = False, ## if True and computeImmediately is True, computes both ref and dut cases.
                  ):
         """Initialize the problem."""
-        self.testf = testf
+        
         self.dataFolder = dataFolder
         self.name = name
         self.MPInum = MPInum                      # Number of MPI processes (used for estimating computational costs)
@@ -110,10 +111,16 @@ class Scatt3DProblem():
             
         # Calculate solutions
         if(computeImmediately):
-            self.compute(computeRef)
+            if(computeBoth): ## compute both cases, then opt vectors if asked for
+                self.compute(True, makeOptVects=False)
+                self.compute(False, makeOptVects=self.makeOptVects)
+            else: ## just compute the ref case, and make opt vects if asked for
+                self.compute(computeRef, makeOptVects=self.makeOptVects)
+            
+                
     
     #@profile
-    def compute(self, computeRef=True):
+    def compute(self, computeRef=True, makeOptVects=True):
         '''
         Sets up and runs the simulation. All the setup is set to reflect the current mesh, reference or dut. Solutions are saved.
         :param computeRef: If True, computes on the reference mesh
@@ -130,7 +137,7 @@ class Scatt3DProblem():
         mem_usage = memory_usage((self.ComputeSolutions, (meshData,), {'computeRef':computeRef,}), max_usage = True)/1000 ## track the memory usage here
         #self.ComputeSolutions(meshData, computeRef=True)
         self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
-        if(self.makeOptVects):
+        if(makeOptVects):
             self.makeOptVectors(meshData)
         
         if(self.verbosity > 2):
@@ -398,7 +405,8 @@ class Scatt3DProblem():
     #@profile
     def makeOptVectors(self, meshData):
         '''
-        Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh
+        Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh.
+        This function also saves various other parameters for later postprocessing
         '''
         
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
@@ -438,6 +446,7 @@ class Scatt3DProblem():
         xdmf.write_function(self.epsr, -2)
         self.epsr.x.array[:] = self.epsr_array_dut
         xdmf.write_function(self.epsr, -1)
+        b = np.zeros(self.Nf*meshData.N_antennas*meshData.N_antennas, dtype=complex)
         for nf in range(self.Nf):
             if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) and (meshData.N_antennas > 0) ):
                 print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
@@ -457,11 +466,23 @@ class Scatt3DProblem():
                 q.interpolate(functools.partial(q_func, Em=self.solutions_ref[nf][0], En=self.solutions_ref[nf][0], k0=k0))
                 xdmf.write_function(q, nf)
         xdmf.close()
+        
+        if (self.comm.rank == self.model_rank): # Save global values for further postprocessing
+            if( hasattr(self, 'solutions_dut') and hasattr(self, 'solutions_ref')): ## need both computed - otherwise, do not save
+                b = np.zeros(self.Nf*meshData.N_antennas*meshData.N_antennas, dtype=complex) ## the array of S-parameters
+                for nf in range(self.Nf):
+                    for m in range(meshData.N_antennas):
+                        for n in range(meshData.N_antennas):
+                            b[nf*meshData.N_antennas*meshData.N_antennas + m*meshData.N_antennas + n] = self.S_dut[nf, m, n] - self.S_ref[nf, n, m]
+                np.savez(self.dataFolder+self.name+'output.npz', b=b, fvec=self.fvec, S_ref=self.S_ref, S_dut=self.S_dut, epsr_mat=self.material_epsr, epsr_defect=self.defect_epsr, N_antennas=meshData.N_antennas)     
     
     def saveEFieldsForAnim(self, Nframes = 50, removePML = True):
         '''
         Saves the E-field magnitudes for the final solution into .xdmf, for a number of different phase factors to create an animation in paraview
         Uses the reference mesh and fields. If removePML, set the values within the PML to 0 (can also be NaN, etc.)
+        
+        :param Nframes: Number of frames in the anim. Each frame is a different phase from 0 to 2*pi
+        :param removePML: If True, sets all values in the PML to something different
         '''
         ## This is presumably an overdone method of finding these already-computed fields - I doubt this is needed
         meshData = self.refMeshdata # use the ref case
@@ -563,7 +584,7 @@ class Scatt3DProblem():
                 #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here
                 eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
                 
-                H = -1/(1j*k*eta0)*ufl.curl(E)*self.testf ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
+                H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
                 
                 ## can only integrate scalars
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
@@ -602,7 +623,7 @@ class Scatt3DProblem():
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')'
                     mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
-                    ax1.plot(angles[:, 1], mag/np.max(mag), label = 'Integrated Intensity', linewidth = 2.5)
+                    ax1.plot(angles[:, 1], mag, label = 'Integrated Intensity', linewidth = 2.5)
                     
                     #===========================================================
                     # ##Calculate Mie scattering
@@ -617,7 +638,7 @@ class Scatt3DProblem():
                     #===========================================================
                     
                     mie = np.loadtxt('mietest.out') ## data for object_radius = 0.34, material_epsr=6
-                    ax1.plot(angles[:, 1], mie/np.max(mie), label = 'Miepython Intensity', linewidth = 2.5)
+                    ax1.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
                     ax1.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
                     if(showPlots):

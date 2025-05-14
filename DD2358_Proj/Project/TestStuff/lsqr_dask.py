@@ -17,15 +17,18 @@ if True:
     # Compute numpy solution
     A_np = np.random.randn(m, n)
     x0_np = np.random.randn(n)
-    b_np = np.dot(A_np, x0_np)
+    b_np = np.matmul(A_np, x0_np)
     print(np.shape(A_np), np.shape(b_np))
     x_np, res_np, rank_np, s_np = np.linalg.lstsq(A_np, b_np)
     error_np = np.linalg.norm(x_np - x0_np)
 
     # Compute dask solution
-    A_da = da.from_array(A_np)
-    b_da = da.from_array(b_np)
-    print(np.shape(A_da), np.shape(b_da))
+    M = m ## must chunk them... to the number of processes?
+    N = n/80
+    
+    A_da = da.from_array(A_np).rechunk()
+    b_da = da.from_array(b_np).rechunk()
+    print('chunks', A_da.chunksize, b_da.chunksize)
     x_da, res_da, rank_da, s_da = da.linalg.lstsq(A_da, b_da)
     x_da = x_da.compute()
     error_da = np.linalg.norm(x_da - x0_np)

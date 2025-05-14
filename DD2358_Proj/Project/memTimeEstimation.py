@@ -141,7 +141,7 @@ class runTimesMems():
             ax1.set_ylabel('Time [hours]')
             ## Times plot
             xs = np.linspace(np.min(self.sizes), np.max(self.sizes), 1000)
-            ax1.scatter(self.sizes, self.times/3600, label='runs on computer')
+            ax1.scatter(self.sizes, self.times/3600, label='recorded runs')
             ax1.plot(xs, self.fitLine(xs, self.timeFit[0], self.timeFit[1], self.timeFit[2])/3600, label='curve_fit')
             #if(numCells>0 and Nf>0):
                 #plt.scatter(numCells*Nf, time/3600, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Time')
@@ -154,7 +154,7 @@ class runTimesMems():
             ax2.set_title('Memory Cost by Problem Size')
             ax2.set_xlabel('# FEM Elements')
             ax2.set_ylabel('Memory [GiB] (Approximate)')
-            ax2.scatter(self.sizes, self.mems, label='runs on computer')
+            ax2.scatter(self.sizes, self.mems, label='recorded runs')
             ax2.plot(xs, self.fitLine(xs, self.memFit[0], self.memFit[1], self.memFit[2]), label='curve_fit')
             #if(numCells>0 and Nf>0):
                 #plt.scatter(numCells, mem, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Memory')

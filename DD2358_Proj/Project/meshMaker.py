@@ -35,8 +35,8 @@ class MeshData():
                  domain_geom = 'domedCyl', 
                  object_geom = 'sphere',
                  defect_geom = 'cylinder',
-                 domain_radius = 1.3,
-                 domain_height = 0.9,
+                 domain_radius = 0.9,
+                 domain_height = 0.6,
                  PML_thickness = 0,
                  dome_height = 0.3,
                  antenna_width = 0.7625, 
@@ -45,7 +45,7 @@ class MeshData():
                  N_antennas = 3,
                  antenna_radius = 0,
                  antenna_z_offset = 0,
-                 object_radius = 0.46,
+                 object_radius = 0.26,
                  defect_radius = 0.2,
                  defect_height = 0.5,
                  defect_angles = [45, 67, 32],
@@ -99,7 +99,7 @@ class MeshData():
         
         
         if(PML_thickness == 0): ## if not specified, calculate it
-            PML_thickness = h*5 ## try to have some mesh cells in thickness
+            PML_thickness = h*5 ## try to have some mesh cells in thickness, or wavelength
         
         ## Set up geometry variables - in units of lambda0 unless otherwise specified
         if(self.domain_geom == 'domedCyl'): ## a cylinder with an oblate-spheroid 'dome' added over and underneath
@@ -119,7 +119,7 @@ class MeshData():
             self.domain_radius = domain_radius * self.lambda0
             self.PML_radius = self.domain_radius + PML_thickness * self.lambda0
             if(self.FF_surface):
-                self.FF_surface_radius = self.domain_radius - self.h*2 ## just a bit less than the domain's radius
+                self.FF_surface_radius = self.domain_radius - self.lambda0/10 #self.h*2 ## just a bit less than the domain's radius
         else:
             print('Invalid geometry type in MeshData, exiting...')
             exit()
