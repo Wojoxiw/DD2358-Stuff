@@ -3,5 +3,6 @@
 *.msh
 *.prefs
 *.pyc
+*.png
 */data3DLUNARC
 */.settings

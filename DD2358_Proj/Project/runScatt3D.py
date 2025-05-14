@@ -30,7 +30,7 @@ import sys
 import meshMaker
 import scatteringProblem
 import memTimeEstimation
-import postProcessing
+#import postProcessing
 
 #===============================================================================
 # ##line profiling
@@ -104,7 +104,7 @@ if __name__ == '__main__':
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, DUTMeshdata=dutMesh, computeBoth=True, verbosity = verbosity, MPInum = MPInum, name = runName, Nf = 6)
         prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
-        postProcessing.testSVD(prob.dataFolder+prob.name)
+        #postProcessing.testSVD(prob.dataFolder+prob.name)
         
     def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
