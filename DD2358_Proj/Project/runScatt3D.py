@@ -9,13 +9,15 @@ import os
 import numpy as np
 import dolfinx, ufl, basix
 import dolfinx.fem.petsc
-os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes?
-os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
-os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
+#os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes? These do not seem to matter on the cluster
+#os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
+#os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
 from mpi4py import MPI
 import gmsh
 from matplotlib import pyplot as plt
+import matplotlib.lines as mlines
 import functools
+from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 
 import sys, petsc4py
 petsc4py.init(sys.argv)
@@ -30,7 +32,7 @@ import sys
 import meshMaker
 import scatteringProblem
 import memTimeEstimation
-#import postProcessing
+import postProcessing
 
 #===============================================================================
 # ##line profiling
@@ -104,31 +106,82 @@ if __name__ == '__main__':
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, DUTMeshdata=dutMesh, computeBoth=True, verbosity = verbosity, MPInum = MPInum, name = runName, Nf = 6)
         prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
-        #postProcessing.testSVD(prob.dataFolder+prob.name)
+        postProcessing.testSVD(prob.dataFolder+prob.name)
         
     def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.65, domain_radius=1.3, PML_thickness=0.35, h=h, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=3.5)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=3.5, fem_degree=3)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         nvals = int(360/4)
         angles = np.zeros((nvals, 2))
         angles[:, 0] = 90
         angles[:, 1] = np.linspace(0, 360, nvals)
-        prob.calcFarField(reference=True, angles = angles, compareToMie = True, showPlots=False)
+        prob.calcFarField(reference=True, angles = angles, compareToMie = True, showPlots=True)
         prevRuns.memTimeAppend(prob)
-    
+        
+        
+    def convergenceTestPlots(): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case
+        ks = np.arange(3, 18)
+        vals = [] ## vals returned from the calculations
+        for k in ks: ## 1/h
+            h = 1/k
+            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.35, domain_radius=1.3, h=h, domain_geom='sphere', FF_surface = True)
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=3.5, Nf=1)
+            vals.append(prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True)) ## each return is [FF surface area, khat integral, forward scattering mag.**2 at f[0], backward scattering mag.**2 at f[0]]
+        vals = np.array(vals, dtype=np.float64)
+        
+        fig1 = plt.figure()
+        ax1 = plt.subplot(1, 1, 1)
+        ax1.grid(True)
+        ax1.set_title('Convergence of Different Values')
+        ax1.set_xlabel(r'Inverse mesh size ($\lambda / h$)')
+        
+        import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+        import miepython.field
+        
+        m = np.sqrt(prob.material_epsr)
+        lamb = c0/prob.fvec[0] ## should be the only frequency
+        x = 2*pi*prob.refMeshdata.object_radius/lamb
+        mieforward = miepython.i_par(m, x, np.cos(0), norm='qsca')*pi*prob.refMeshdata.object_radius**2
+        miebackward = miepython.i_par(m, x, np.cos(pi), norm='qsca')*pi*prob.refMeshdata.object_radius**2
+        print('fw', mieforward, vals[:, 2])
+        print('bw', miebackward, vals[:, 3])
+        real_area = 4*pi*prob.refMeshdata.FF_surface_radius**2
+        ax1.plot(ks, np.abs((real_area-vals[:, 0])/real_area), marker='o', linestyle='--', label = r'area - rel. error')
+        ax1.plot(ks, np.abs(vals[:, 1]), marker='o', linestyle='--', label = r'khat integral - abs. error')
+        ax1.plot(ks, np.abs((mieforward-vals[:, 2])/mieforward), marker='o', linestyle='--', label = r'forward scat. - rel. error')
+        ax1.plot(ks, np.abs((miebackward-vals[:, 2])/miebackward), marker='o', linestyle='--', label = r'backward scat. - rel. error')
+        
+        #=======================================================================
+        # first_legend = ax1.legend(framealpha=0.5, loc = 'lower left')
+        # ##second legend to distinguish between dashed and regular lines (phi- and theta- pols)
+        # handleds = []
+        # line_dashed = mlines.Line2D([], [], color='black', linestyle='--', linewidth=1.5, label=r'max. rel. error') ##fake lines to create second legend elements
+        # handleds.append(line_dashed)
+        # line_solid = mlines.Line2D([], [], color='black', linestyle='solid', linewidth=1.5, label=r'rms rel. error') ##fake lines to create second legend elements
+        # handleds.append(line_solid)
+        # second_legend = ax1.legend(handles=handleds, loc='upper right', framealpha=0.5) #best upper-right
+        # ax1.add_artist(first_legend)
+        #=======================================================================
+        ax1.set_yscale('log')
+        ax1.legend()
+        fig1.tight_layout()
+        plt.savefig(prob.dataFolder+prob.name+'convergences.png')
+        plt.show()
+        
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
     #testFarField(h=1/10)
+    #convergenceTestPlots()
     
-    for k in np.arange(10, 35):
-        runName = 'test-h'+str(k)
+    for k in np.arange(10, 35, 4):
+        runName = 'test-fem3h'+str(k)
         testFarField(h=1/k)
     
     #===========================================================================

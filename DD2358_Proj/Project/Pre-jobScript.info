@@ -14,7 +14,7 @@ git reset --hard origin/master
 
 Then install the needed packages in an env:
 module load foss
-module save ## to make this default so it autoloads
+module save ## to make this default so it autoloads. Currently not doing this... just in case?
 
 # Actual installation (starting with deleting a previous one)  Removed installing py-pyvista on the cluster
 rm -rf spack
@@ -24,7 +24,7 @@ git clone https://github.com/spack/spack.git
 spack env create Scatt3D
 spack env activate Scatt3D
 spack add fenics-dolfinx+adios2 ^petsc+complex+mumps py-fenics-dolfinx libpressio cflags="-O3" fflags="-O3"
-spack add py-gmsh py-scipy py-memory-profiler
+spack add py-gmsh py-scipy py-memory-profiler py-h5py py-matplotlib
 spack compiler find
 spack external find openmpi
 spack install

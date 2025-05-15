@@ -543,14 +543,15 @@ class Scatt3DProblem():
         if(self.verbosity>0 & self.comm.rank == self.model_rank):
             print(self.name+' DoFs view saved')
             
-    def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False, showPlots=False):
+    def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False, showPlots=False, returnConvergenceVals=False):
         '''
         Calculates the farfield at each frequency point at at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True
         Returns an array of [E_theta, E_phi] at each angle, to the master process only
         :param reference: Whether this is being computed for the DUT case or the reference
-        :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0)
+        :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0). Default asks for forward and backward scattering.
         :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
         :param showPlots: If True, plt.show(). Plots are still saved, though. This must be False for cluster use
+        :param returnConvergenceVals: If True, returns some convergence values instead of the regular Mie scattering comparison or anything else. Angles should be default for this, so first/second are forward/backward
         '''
         t1 = timer()
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank)):
@@ -590,8 +591,6 @@ class Scatt3DProblem():
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 ## try only half-sphere (forward or backward)
-                #self.F_theta = 1*self.dS_farfield ## calculate area
-                #self.F_phi = 1*self.dS_farfield ## calculate area
                 
                 khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
                 def evalFs(): ## evaluates the farfield in some given direction khat
@@ -608,7 +607,84 @@ class Scatt3DProblem():
                 farfieldparts = self.comm.gather(farfieldpart, root=self.model_rank)
                 if(self.comm.rank == 0): ## assemble each part as it is made
                     farfields[b, i] = sum(farfieldparts)
-        
+                    
+                    
+                    
+        if(returnConvergenceVals): ## calculate and print some tests
+            areaCalc = 1*self.dS_farfield ## calculate area
+            areaPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(areaCalc))
+            areaParts = self.comm.gather(areaPart, root=self.model_rank)
+            
+            khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates
+            khatCalc = ufl.inner(khat, n)*self.dS_farfield ## calculate zero from khat . n
+            khatPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(khatCalc))
+            khatParts = self.comm.gather(khatPart, root=self.model_rank)
+            
+            khatPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(khatCalc))
+            khatParts = self.comm.gather(khatPart, root=self.model_rank)
+            
+            if(self.comm.rank == 0): ## assemble each part as it is made
+                areaResult = sum(areaParts)
+                real_area = 4*pi*meshData.FF_surface_radius**2
+                khatResult = sum(khatParts)
+                if(self.verbosity>2):
+                    print(f'khat calc (should be zero): {np.abs(khatResult):.5e}')
+                    print(f'Farfield-surface area, calculated vs real (expected): {np.abs(areaResult)} vs {real_area}. Error: {np.abs(areaResult-real_area):.3e}, rel. error: {np.abs((areaResult-real_area)/real_area):.3e}')
+                          
+            if(showPlots):
+                ## also compare internal electric fields inside the sphere, at distances rs
+                fig = plt.figure()
+                numpts = 5001
+                rs = np.linspace(0, meshData.object_radius*3, numpts)
+                negrs = np.linspace(meshData.object_radius*-3, 0, numpts)
+                enears = np.zeros((np.size(rs), 3))
+                enearsbw = np.zeros((np.size(rs), 3)) ## backward (I think)
+                
+                ### find the simulated values for those radii, at some angle
+                points = np.zeros((3, numpts*2))
+                points[0] = np.hstack((negrs, rs)) ## this should be the forward scattering
+                bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
+                cells = []
+                points_on_proc = [] ## points on this processor
+                cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points.T) # Find cells whose bounding-box collide with the the points
+                colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, points.T) # Choose one of the cells that contains the point
+                for i, point in enumerate(points.T):
+                    if len(colliding_cells.links(i)) > 0:
+                        points_on_proc.append(point)
+                        cells.append(colliding_cells.links(i)[0])
+                points_on_proc = np.array(points_on_proc, dtype=np.float64)
+                E_values = self.solutions_ref[0][0].eval(points_on_proc, cells)
+                
+                import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                import miepython.field
+                m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                lambdat = c0/freq
+                x = 2*pi*meshData.object_radius/lambdat
+                coefs = miepython.core.coefficients(m, x, internal=True)
+                for q in range(len(rs)):
+                    r = rs[q]
+                    nr = -1*negrs[q] ## still positive, just in other direction due to phi angle
+                    enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi/2, 0)
+                    enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, pi/2, pi)
+                
+                enears = np.vstack((enearsbw, enears))
+                plt.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
+                plt.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation')
+                plt.grid(True)
+                plt.legend()
+                plt.xlabel('Radius [m]')
+                plt.ylabel('E-field Magnitude')
+            
+                plt.axvline(meshData.object_radius, label = 'radius', color = 'black')
+                plt.axvline(-1*meshData.object_radius, label = 'radius', color = 'black')
+                plt.show()
+            
+            magf = np.abs(farfields[0,0,0])**2 + np.abs(farfields[0,0,1])**2
+            magb = np.abs(farfields[0,1,0])**2 + np.abs(farfields[0,1,1])**2
+            vals = [areaResult, khatResult, magf, magb] # [FF surface area, khat integral, forward scattering mag.**2 at f[0], backward scattering mag.**2 at f[0]]
+            return vals
+                    
+                    
         if(self.comm.rank == 0): ## plotting and returning
             if(self.verbosity > 1):
                 print(f'Farfields calculated in {timer()-t1:.3f} s')
@@ -625,17 +701,15 @@ class Scatt3DProblem():
                     mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
                     ax1.plot(angles[:, 1], mag, label = 'Integrated Intensity', linewidth = 2.5)
                     
-                    #===========================================================
-                    # ##Calculate Mie scattering
-                    # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                    # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                    # mie = np.zeros_like(angles[:, 1])
-                    # for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
-                    #     lambdat = c0/freq
-                    #     x = 2*pi*meshData.object_radius/lambdat
-                    #     mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
-                    # np.savetxt('mietest.out', mie)
-                    #===========================================================
+                    ##Calculate Mie scattering
+                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    mie = np.zeros_like(angles[:, 1])
+                    for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
+                        lambdat = c0/freq
+                        x = 2*pi*meshData.object_radius/lambdat
+                        mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
+                    np.savetxt('mietest.out', mie)
                     
                     mie = np.loadtxt('mietest.out') ## data for object_radius = 0.34, material_epsr=6
                     ax1.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
@@ -644,7 +718,6 @@ class Scatt3DProblem():
                     if(showPlots):
                         plt.show()
                     plt.clf()
-        
             
             if(compareToMie and self.Nf > 2): ## do plots by frequency for forward+backward scattering
                 ##Calculate Mie scattering
@@ -664,7 +737,6 @@ class Scatt3DProblem():
                 plt.ylabel('Intensity')
                 plt.plot(self.fvec/1e9, mieForward, linestyle='--', label = r'Mie forward-scattering')
                 plt.plot(self.fvec/1e9, mieBackward, linestyle='--', label = r'Mie backward-scattering')
-                #plt.plot(self.fvec/1e9, 4*pi*meshData.FF_surface_radius**2*np.ones_like(self.fvec), label = r'theo, area of sphere') ## theoretical area of a sphere
                 plt.legend()
                 plt.grid()
                 plt.tight_layout()
@@ -672,3 +744,5 @@ class Scatt3DProblem():
                     plt.show()
             
             return farfields
+        else: ## return nan for non-main processes, just in case
+            return np.nan
