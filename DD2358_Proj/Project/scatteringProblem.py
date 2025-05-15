@@ -582,7 +582,7 @@ class Scatt3DProblem():
                 phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
                 thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
                 
-                #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here
+                #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here. The factor would be 1 and gets cancelled out anyway, though
                 eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
                 
                 H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
@@ -590,7 +590,6 @@ class Scatt3DProblem():
                 ## can only integrate scalars
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                ## try only half-sphere (forward or backward)
                 
                 khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
                 def evalFs(): ## evaluates the farfield in some given direction khat
@@ -681,9 +680,8 @@ class Scatt3DProblem():
             
             magf = np.abs(farfields[0,0,0])**2 + np.abs(farfields[0,0,1])**2
             magb = np.abs(farfields[0,1,0])**2 + np.abs(farfields[0,1,1])**2
-            vals = [areaResult, khatResult, magf, magb] # [FF surface area, khat integral, forward scattering mag.**2 at f[0], backward scattering mag.**2 at f[0]]
+            vals = [areaResult, khatResult, np.abs(magf), np.abs(magb)] # [FF surface area, khat integral, forward scattering mag.**2 at f[0], backward scattering mag.**2 at f[0]]
             return vals
-                    
                     
         if(self.comm.rank == 0): ## plotting and returning
             if(self.verbosity > 1):
@@ -701,15 +699,17 @@ class Scatt3DProblem():
                     mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
                     ax1.plot(angles[:, 1], mag, label = 'Integrated Intensity', linewidth = 2.5)
                     
-                    ##Calculate Mie scattering
-                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                    mie = np.zeros_like(angles[:, 1])
-                    for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
-                        lambdat = c0/freq
-                        x = 2*pi*meshData.object_radius/lambdat
-                        mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
-                    np.savetxt('mietest.out', mie)
+                    #===========================================================
+                    # ##Calculate Mie scattering
+                    # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                    # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    # mie = np.zeros_like(angles[:, 1])
+                    # for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
+                    #     lambdat = c0/freq
+                    #     x = 2*pi*meshData.object_radius/lambdat
+                    #     mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
+                    # np.savetxt('mietest.out', mie)
+                    #===========================================================
                     
                     mie = np.loadtxt('mietest.out') ## data for object_radius = 0.34, material_epsr=6
                     ax1.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)

@@ -125,14 +125,14 @@ if __name__ == '__main__':
         
         
     def convergenceTestPlots(): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case
-        ks = np.arange(3, 18, 2)
+        ks = np.arange(3, 22, 1)
         vals = [] ## vals returned from the calculations
         for k in ks: ## 1/h
             h = 1/k
             refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.35, domain_radius=1.3, h=h, domain_geom='sphere', FF_surface = True)
             prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=3.5, Nf=1)
             vals.append(prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True)) ## each return is [FF surface area, khat integral, forward scattering mag.**2 at f[0], backward scattering mag.**2 at f[0]]
-        vals = np.array(vals, dtype=np.float64)
+        vals = np.array(vals)
         
         fig1 = plt.figure()
         ax1 = plt.subplot(1, 1, 1)
@@ -154,7 +154,7 @@ if __name__ == '__main__':
         ax1.plot(ks, np.abs((real_area-vals[:, 0])/real_area), marker='o', linestyle='--', label = r'area - rel. error')
         ax1.plot(ks, np.abs(vals[:, 1]), marker='o', linestyle='--', label = r'khat integral - abs. error')
         ax1.plot(ks, np.abs((mieforward-vals[:, 2])/mieforward), marker='o', linestyle='--', label = r'forward scat. - rel. error')
-        ax1.plot(ks, np.abs((miebackward-vals[:, 2])/miebackward), marker='o', linestyle='--', label = r'backward scat. - rel. error')
+        ax1.plot(ks, np.abs((miebackward-vals[:, 3])/miebackward), marker='o', linestyle='--', label = r'backward scat. - rel. error')
         
         #=======================================================================
         # first_legend = ax1.legend(framealpha=0.5, loc = 'lower left') ## extra legend stuff in case I want to plot error for many angles
@@ -177,8 +177,8 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    runName = 'test-fem3h2-10'
-    testFarField(h=1/10)
+    runName = 'test-fem3ha-10'
+    testFarField(h=1/12)
     #convergenceTestPlots()
     
     #===========================================================================
