@@ -110,10 +110,10 @@ if __name__ == '__main__':
         
     def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.65, domain_radius=1.3, PML_thickness=0.35, h=h, domain_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.3118824290102722, domain_radius=1.3, PML_thickness=0.35, h=h, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=3.5, fem_degree=3)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2, fem_degree=3)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         nvals = int(360/4)
@@ -125,7 +125,7 @@ if __name__ == '__main__':
         
         
     def convergenceTestPlots(): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case
-        ks = np.arange(3, 18)
+        ks = np.arange(3, 18, 2)
         vals = [] ## vals returned from the calculations
         for k in ks: ## 1/h
             h = 1/k
@@ -157,7 +157,7 @@ if __name__ == '__main__':
         ax1.plot(ks, np.abs((miebackward-vals[:, 2])/miebackward), marker='o', linestyle='--', label = r'backward scat. - rel. error')
         
         #=======================================================================
-        # first_legend = ax1.legend(framealpha=0.5, loc = 'lower left')
+        # first_legend = ax1.legend(framealpha=0.5, loc = 'lower left') ## extra legend stuff in case I want to plot error for many angles
         # ##second legend to distinguish between dashed and regular lines (phi- and theta- pols)
         # handleds = []
         # line_dashed = mlines.Line2D([], [], color='black', linestyle='--', linewidth=1.5, label=r'max. rel. error') ##fake lines to create second legend elements
@@ -177,12 +177,15 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/10)
+    runName = 'test-fem3h2-10'
+    testFarField(h=1/10)
     #convergenceTestPlots()
     
-    for k in np.arange(10, 35, 4):
-        runName = 'test-fem3h'+str(k)
-        testFarField(h=1/k)
+    #===========================================================================
+    # for k in np.arange(10, 35, 4):
+    #     runName = 'test-fem3h'+str(k)
+    #     testFarField(h=1/k)
+    #===========================================================================
     
     #===========================================================================
     # for k in range(15, 40, 2):
