@@ -543,15 +543,15 @@ class Scatt3DProblem():
         if(self.verbosity>0 & self.comm.rank == self.model_rank):
             print(self.name+' DoFs view saved')
             
-    def calcFarField(self, reference, angles = np.array([[90, 180], [90, 0]]), compareToMie = False, showPlots=False, returnConvergenceVals=False):
+    def calcFarField(self, reference, compareToMie = False, showPlots=False, returnConvergenceVals=False, angles = None):
         '''
         Calculates the farfield at each frequency point at at given angles, using the farfield boundary in the mesh - must have mesh.FF_surface = True
         Returns an array of [E_theta, E_phi] at each angle, to the master process only
         :param reference: Whether this is being computed for the DUT case or the reference
-        :param angles: List (or array) of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0). Default asks for forward and backward scattering.
         :param compareToMie: If True, plots a comparison against predicted Mie scattering (assuming spherical object)
         :param showPlots: If True, plt.show(). Plots are still saved, though. This must be False for cluster use
         :param returnConvergenceVals: If True, returns some convergence values instead of the regular Mie scattering comparison or anything else. Angles should be default for this, so first/second are forward/backward
+        :param angles: Is an array of theta and phi angles to calculate at [in degrees]. Incoming plane waves should be from (90, 0). Default asks for forward and backward scattering, depending on what is being asked for.
         '''
         t1 = timer()
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank)):
@@ -563,8 +563,18 @@ class Scatt3DProblem():
         else:
             meshData = self.DUTMeshdata
             sols = self.solutions_dut
+        ## check what angles to compute
+        if(self.Nf > 2 and not returnConvergenceVals):
+            angles = np.array([[90, 180], [90, 0]])
+        elif(returnConvergenceVals or compareToMie):
+            nvals = 2*int(360/10) ## must be divisible by 2
+            angles = np.zeros((nvals*2, 2))
+            angles[:nvals, 0] = 90 ## first half is the H-plane
+            angles[:nvals, 1] = np.linspace(0, 360, nvals)
+            angles[nvals:, 0] = np.linspace(-90, 270, nvals) ## second half is the E-plane
+            angles[nvals:, 1] = 180
             
-            
+        
         numAngles = np.shape(angles)[0]
         prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
         n = ufl.FacetNormal(meshData.mesh)('+')
@@ -595,11 +605,8 @@ class Scatt3DProblem():
                 def evalFs(): ## evaluates the farfield in some given direction khat
                     exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
                     prefactor.value = 1j*k/(4*pi)
-                    
                     F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
                     F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
-                    
-                    #return(F_thetaE, F_phiE, F_thetaH, F_phiH)
                     return np.array((F_theta, F_phi))
                 
                 farfieldpart = evalFs()
@@ -651,7 +658,7 @@ class Scatt3DProblem():
                     if len(colliding_cells.links(i)) > 0:
                         points_on_proc.append(point)
                         cells.append(colliding_cells.links(i)[0])
-                points_on_proc = np.array(points_on_proc, dtype=np.float64)
+                #points_on_proc = np.array(points_on_proc, dtype=np.float64) # not needed?
                 E_values = self.solutions_ref[0][0].eval(points_on_proc, cells)
                 
                 import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
@@ -677,10 +684,22 @@ class Scatt3DProblem():
                 plt.axvline(meshData.object_radius, label = 'radius', color = 'black')
                 plt.axvline(-1*meshData.object_radius, label = 'radius', color = 'black')
                 plt.show()
+                
+                
+            import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+            m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+            mies = np.zeros_like(angles[:, 1])
+            lambdat = c0/freq
+            x = 2*pi*meshData.object_radius/lambdat
+            for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
+                    mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                else: ## if not, we are changing theta angles and in the parallel plane
+                    mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+            np.savetxt('miestest.out', mies)
             
-            magf = np.abs(farfields[0,0,0])**2 + np.abs(farfields[0,0,1])**2
-            magb = np.abs(farfields[0,1,0])**2 + np.abs(farfields[0,1,1])**2
-            vals = [areaResult, khatResult, np.abs(magf), np.abs(magb)] # [FF surface area, khat integral, forward scattering mag.**2 at f[0], backward scattering mag.**2 at f[0]]
+            mies = np.loadtxt('miestest.out') ## data for certain object properties
+            vals = [areaResult, khatResult], farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
             return vals
                     
         if(self.comm.rank == 0): ## plotting and returning
@@ -697,22 +716,26 @@ class Scatt3DProblem():
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')'
                     mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
-                    ax1.plot(angles[:, 1], mag, label = 'Integrated Intensity', linewidth = 2.5)
+                    ax1.plot(angles[:nvals, 1]-180, mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0]-90, mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
                     
-                    #===========================================================
-                    # ##Calculate Mie scattering
-                    # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                    # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                    # mie = np.zeros_like(angles[:, 1])
-                    # for i in range(len(angles[:, 1])): ## get a miepython error if I use a vector of x, so:
-                    #     lambdat = c0/freq
-                    #     x = 2*pi*meshData.object_radius/lambdat
-                    #     mie[i] = miepython.i_par(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2
-                    # np.savetxt('mietest.out', mie)
-                    #===========================================================
+                    ##Calculate Mie scattering
+                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    mie = np.zeros_like(angles[:, 1])
+                    lambdat = c0/freq
+                    x = 2*pi*meshData.object_radius/lambdat
+                    for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                        if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
+                            mie[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                        else: ## if not, we are changing theta angles and in the parallel plane
+                            mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+                    np.savetxt('mietest.out', mie)
                     
-                    mie = np.loadtxt('mietest.out') ## data for object_radius = 0.34, material_epsr=6
-                    ax1.plot(angles[:, 1], mie, label = 'Miepython Intensity', linewidth = 2.5)
+                    mie = np.loadtxt('mietest.out') ## data for some object properties
+                    ax1.plot(angles[:nvals, 1]-180, mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0]-90, mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
+                    plt.title('Scattered E-field Intensity Comparison')
                     ax1.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
                     if(showPlots):
