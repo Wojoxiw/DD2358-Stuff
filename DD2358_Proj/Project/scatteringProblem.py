@@ -61,6 +61,7 @@ class Scatt3DProblem():
                  PW_pol = np.array([0, 0, 1]), ## incident polarization of the plane-wave, if used above. Default is along the z-axis
                  makeOptVects = True, ## if True, compute and saves the optimization vectors. Turn False if not needed
                  computeBoth = False, ## if True and computeImmediately is True, computes both ref and dut cases.
+                 PML_R0 = 1e-10 ## 'intended damping for reflectinos from the PML'
                  ):
         """Initialize the problem."""
         
@@ -86,6 +87,8 @@ class Scatt3DProblem():
         else:
             self.Nf = Nf
             self.fvec = np.linspace(f0-BW/2, f0+BW/2, Nf)  # Vector of simulation frequencies
+            
+        self.PML_R0 = PML_R0
             
         self.epsr_bkg = epsr_bkg
         self.mur_bkg = mur_bkg
@@ -211,7 +214,7 @@ class Scatt3DProblem():
         :param k: Frequency used for coordinate stretching.
         '''
         # Set up the PML
-        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=np.exp(-10)):
+        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=self.PML_R0):
             '''
             Calculates the PML stretching of a coordinate
             :param y: the coordinate to be stretched
@@ -614,7 +617,9 @@ class Scatt3DProblem():
                 if(self.comm.rank == 0): ## assemble each part as it is made
                     farfields[b, i] = sum(farfieldparts)
                     
-                    
+        if(self.comm.rank == 0): ## plotting and returning
+            if(self.verbosity > 1):
+                print(f'Farfields calculated in {timer()-t1:.3f} s')
                     
         if(returnConvergenceVals): ## calculate and print some tests
             areaCalc = 1*self.dS_farfield ## calculate area
@@ -702,8 +707,6 @@ class Scatt3DProblem():
             return vals
                     
         if(self.comm.rank == 0): ## plotting and returning
-            if(self.verbosity > 1):
-                print(f'Farfields calculated in {timer()-t1:.3f} s')
                                         
             if(compareToMie and self.Nf < 3): ## make some plots by angle if few freqs. (assuming here that we have many angles)
                 for b in range(self.Nf):

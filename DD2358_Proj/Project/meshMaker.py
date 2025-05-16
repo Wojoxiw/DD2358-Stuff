@@ -99,7 +99,7 @@ class MeshData():
         
         
         if(PML_thickness == 0): ## if not specified, calculate it
-            PML_thickness = h*5 ## try to have some mesh cells in thickness, or wavelength
+            PML_thickness = h*10 ## try to have some mesh cells in thickness, or wavelength
         
         ## Set up geometry variables - in units of lambda0 unless otherwise specified
         if(self.domain_geom == 'domedCyl'): ## a cylinder with an oblate-spheroid 'dome' added over and underneath
