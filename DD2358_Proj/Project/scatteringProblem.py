@@ -582,6 +582,9 @@ class Scatt3DProblem():
         prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
         theta = dolfinx.fem.Constant(meshData.mesh, 0)
         phi = dolfinx.fem.Constant(meshData.mesh, 0)
+        khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
+        phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
+        thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
         n = ufl.FacetNormal(meshData.mesh)('+')
         signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
@@ -593,9 +596,6 @@ class Scatt3DProblem():
             for i in range(numAngles):
                 theta.value = angles[i,0]*pi/180 # convert to radians first
                 phi.value = angles[i,1]*pi/180
-                khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
-                phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
-                thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
                 
                 #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here. The factor would be 1 and gets cancelled out anyway, though
                 eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
@@ -606,7 +606,7 @@ class Scatt3DProblem():
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 
-                khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers
+                khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers - not sure how else to do this
                 def evalFs(): ## evaluates the farfield in some given direction khat
                     exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
                     prefactor.value = 1j*k/(4*pi)
