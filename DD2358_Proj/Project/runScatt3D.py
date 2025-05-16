@@ -110,22 +110,23 @@ if __name__ == '__main__':
         prevRuns.memTimeAppend(prob)
         postProcessing.testSVD(prob.dataFolder+prob.name)
         
-    def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
+    def testFarField(h = 1/12, showPlots=True): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.3118824290102722, domain_radius=1.3, PML_thickness=0.35, h=h, domain_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.5, domain_radius=1.3, PML_thickness=0.35, h=h, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2.5)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
-        prob.calcFarField(reference=True, compareToMie = True, showPlots=True)
+        prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots)
         prevRuns.memTimeAppend(prob)
         
         
-    def convergenceTestPlots(showPlots=True): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
+    def convergenceTestPlots(showPlots=False): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         ks = np.arange(3, 30, 1)
         vals = [] ## vals returned from the calculations
         rmsRelErrs = np.zeros(len(ks)) ## for the farfields
+        rmsAbsErrs = np.zeros(len(ks))
         maxRelErrs = np.zeros(len(ks))
         for i in range(len(ks)): ## 1/h
             h = 1/ks[i]
@@ -136,6 +137,7 @@ if __name__ == '__main__':
             intenss = np.abs(farfields[0,:,0])**2 + np.abs(farfields[0,:,1])**2
             relativeErrors = np.abs( (intenss - mies) / mies )
             rmsRelErrs[i] = np.sqrt(np.sum(relativeErrors**2)/np.size(relativeErrors))
+            rmsAbsErrs[i] = np.sqrt(np.sum(np.abs(intenss - mies)**2)/np.size(intenss))
             maxRelErrs[i] = np.max(relativeErrors)
         vals = np.array(vals)
         
@@ -149,6 +151,7 @@ if __name__ == '__main__':
         ax1.plot(ks, np.abs((real_area-vals[:, 0])/real_area), marker='o', linestyle='--', label = r'area - rel. error')
         ax1.plot(ks, np.abs(vals[:, 1]), marker='o', linestyle='--', label = r'khat integral - abs. error')
         ax1.plot(ks, rmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
+        ax1.plot(ks, rmsAbsErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS abs. error')
         ax1.plot(ks, maxRelErrs, marker='o', linestyle='--', label = r'Farfield cuts max. rel. error')
         
         #=======================================================================
@@ -173,7 +176,7 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/18)
+    #testFarField(h=1/20)
     convergenceTestPlots()
     
     #===========================================================================

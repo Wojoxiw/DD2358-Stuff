@@ -567,7 +567,7 @@ class Scatt3DProblem():
         if(self.Nf > 2 and not returnConvergenceVals):
             angles = np.array([[90, 180], [90, 0]])
         elif(returnConvergenceVals or compareToMie):
-            nvals = 2*int(360/10) ## must be divisible by 2
+            nvals = 2*int(360/4) ## must be divisible by 2
             angles = np.zeros((nvals*2, 2))
             angles[:nvals, 0] = 90 ## first half is the H-plane
             angles[:nvals, 1] = np.linspace(0, 360, nvals)
@@ -623,9 +623,6 @@ class Scatt3DProblem():
             
             khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates
             khatCalc = ufl.inner(khat, n)*self.dS_farfield ## calculate zero from khat . n
-            khatPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(khatCalc))
-            khatParts = self.comm.gather(khatPart, root=self.model_rank)
-            
             khatPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(khatCalc))
             khatParts = self.comm.gather(khatPart, root=self.model_rank)
             
