@@ -686,17 +686,19 @@ class Scatt3DProblem():
                 plt.show()
                 
                 
-            import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-            m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-            mies = np.zeros_like(angles[:, 1])
-            lambdat = c0/freq
-            x = 2*pi*meshData.object_radius/lambdat
-            for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-                if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
-                    mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
-                else: ## if not, we are changing theta angles and in the parallel plane
-                    mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
-            np.savetxt('miestest.out', mies)
+            #===================================================================
+            # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+            # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+            # mies = np.zeros_like(angles[:, 1])
+            # lambdat = c0/freq
+            # x = 2*pi*meshData.object_radius/lambdat
+            # for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+            #     if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
+            #         mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+            #     else: ## if not, we are changing theta angles and in the parallel plane
+            #         mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+            # np.savetxt('miestest.out', mies)
+            #===================================================================
             
             mies = np.loadtxt('miestest.out') ## data for certain object properties
             vals = [areaResult, khatResult], farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
