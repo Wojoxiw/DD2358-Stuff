@@ -580,6 +580,8 @@ class Scatt3DProblem():
         
         numAngles = np.shape(angles)[0]
         prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
+        theta = dolfinx.fem.Constant(meshData.mesh, 0)
+        phi = dolfinx.fem.Constant(meshData.mesh, 0)
         n = ufl.FacetNormal(meshData.mesh)('+')
         signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
@@ -589,8 +591,8 @@ class Scatt3DProblem():
             k = 2*np.pi*freq/c0
             E = sols[b][0]('+')
             for i in range(numAngles):
-                theta = angles[i,0]*pi/180 # convert to radians first
-                phi = angles[i,1]*pi/180
+                theta.value = angles[i,0]*pi/180 # convert to radians first
+                phi.value = angles[i,1]*pi/180
                 khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
                 phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
                 thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])

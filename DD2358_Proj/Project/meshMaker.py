@@ -238,9 +238,8 @@ class MeshData():
                 pml = [(self.tdim, pml)] # needs to be dim, tags
             FF_surface_dimTags = []
             if(self.FF_surface):
-                FF_c = np.array([0, 0, self.lambda0/1e6]) ## the centre of this should be displaced slightly off-center so it can be found by its Centre of Mass... there must be a better way
+                FF_c = np.array([0, 0, 0]) ## centred on the origin.
                 FF_surface = gmsh.model.occ.addSphere(FF_c[0], FF_c[1], FF_c[2], self.FF_surface_radius)
-                inFF_surface = lambda x: np.allclose(x, FF_c)
                 FF_surface_dimTags = [(self.tdim, FF_surface)]
             
             # Create fragments and dimtags
@@ -271,7 +270,8 @@ class MeshData():
             antenna_surface = []
             farfield_surface = []
             for boundary in gmsh.model.occ.getEntities(dim=self.fdim):
-                CoM = gmsh.model.occ.getCenterOfMass(boundary[0], boundary[1])
+                CoM = gmsh.model.occ.getCenterOfMass(boundary[0], boundary[1]) ## 'centre of mass'
+                bbox = gmsh.model.getBoundingBox(boundary[0], boundary[1]) ## 'bounding box'
                 for n in range(len(inPECSurface)): ## iterate over all of these
                     if inPECSurface[n](CoM):
                         pec_surface.append(boundary[1])
@@ -279,7 +279,7 @@ class MeshData():
                     if (inAntennaSurface[n](CoM)):
                         antenna_surface.append(boundary[1])
                 if(self.FF_surface):
-                    if(inFF_surface(CoM)): ## FF surface is just a sphere
+                    if(np.isclose(bbox[0], -self.FF_surface_radius)): ## bbox[0] should be the minimum x-coordinate? As a sphere, this should be the radius
                         farfield_surface.append(boundary[1])
             pec_surface_marker = gmsh.model.addPhysicalGroup(self.fdim, pec_surface)
             antenna_surface_markers = [gmsh.model.addPhysicalGroup(self.fdim, [s]) for s in antenna_surface]
