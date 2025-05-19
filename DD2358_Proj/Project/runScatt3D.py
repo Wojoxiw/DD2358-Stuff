@@ -143,8 +143,8 @@ if __name__ == '__main__':
             elif(convergence == 'pmlR0'):
                 probOptions = dict(PML_R0 = ks[i])
                 
-            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.35, PML_thickness=1.0, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=3.5, Nf=1, **probOptions)
+            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 1/3, PML_thickness=0.25, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, **probOptions)
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=True, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
@@ -189,7 +189,7 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'h15PML1.0lambdathickconvergence.png')
+            plt.savefig(prob.dataFolder+prob.name+convergence+'h15PML.25lambdathickconvergence.png')
             #plt.show()
         
     #testRun(h=1/20)
@@ -197,8 +197,8 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     #testRun2(h=1/10)
     #testFarField(h=1/40)
-    #convergenceTestPlots('pmlR0')
-    convergenceTestPlots('meshsize')
+    convergenceTestPlots('pmlR0')
+    #convergenceTestPlots('meshsize')
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
