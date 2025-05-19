@@ -9,7 +9,7 @@ import os
 import numpy as np
 import dolfinx, ufl, basix
 import dolfinx.fem.petsc
-#os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes? These do not seem to matter on the cluster
+#os.environ["OMP_NUM_THREADS"] = "1" # perhaps needed for MPI speedup if using many processes locally? These do not seem to matter on the cluster
 #os.environ['MKL_NUM_THREADS'] = '1' # maybe also relevent
 #os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
 from mpi4py import MPI
@@ -146,49 +146,51 @@ if __name__ == '__main__':
             refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.35, PML_thickness=.25, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
             prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=3.5, Nf=1, **probOptions)
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
-            areaVals.append(newval)
-            khatRmsErrs[i] = np.sqrt(np.sum(khats**2)/np.size(khats))
-            khatMaxErrs[i] = np.max(khats)
-            intenss = np.abs(farfields[0,:,0])**2 + np.abs(farfields[0,:,1])**2
-            FFrelativeErrors = np.abs( (intenss - mies) / mies )
-            FFrmsRelErrs[i] = np.sqrt(np.sum(FFrelativeErrors**2)/np.size(FFrelativeErrors))
-            FFrmsAbsErrs[i] = np.sqrt(np.sum(np.abs(intenss - mies)**2)/np.size(intenss))
-            FFmaxRelErrs[i] = np.max(FFrelativeErrors)
-        areaVals = np.array(areaVals)
-        
-        fig1 = plt.figure()
-        ax1 = plt.subplot(1, 1, 1)
-        ax1.grid(True)
-        ax1.set_title('Convergence of Different Values')
-        if(convergence == 'meshsize'):
-            ax1.set_xlabel(r'Inverse mesh size ($\lambda / h$)')
-        elif(convergence == 'pmlR0'):
-            ax1.set_xscale('log')
-        
-        real_area = 4*pi*prob.refMeshdata.FF_surface_radius**2
-        ax1.plot(ks, np.abs((real_area-areaVals)/real_area), marker='o', linestyle='--', label = r'area - rel. error')
-        ax1.plot(ks, khatMaxErrs, marker='o', linestyle='--', label = r'khat integral - max. abs. error')
-        ax1.plot(ks, khatRmsErrs, marker='o', linestyle='--', label = r'khat integral - RMS error')
-        ax1.plot(ks, FFrmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
-        ax1.plot(ks, FFrmsAbsErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS abs. error')
-        ax1.plot(ks, FFmaxRelErrs, marker='o', linestyle='--', label = r'Farfield cuts max. rel. error')
-        
-        #=======================================================================
-        # first_legend = ax1.legend(framealpha=0.5, loc = 'lower left') ## extra legend stuff in case I want to plot error for many angles
-        # ##second legend to distinguish between dashed and regular lines (phi- and theta- pols)
-        # handleds = []
-        # line_dashed = mlines.Line2D([], [], color='black', linestyle='--', linewidth=1.5, label=r'max. rel. error') ##fake lines to create second legend elements
-        # handleds.append(line_dashed)
-        # line_solid = mlines.Line2D([], [], color='black', linestyle='solid', linewidth=1.5, label=r'rms rel. error') ##fake lines to create second legend elements
-        # handleds.append(line_solid)
-        # second_legend = ax1.legend(handles=handleds, loc='upper right', framealpha=0.5) #best upper-right
-        # ax1.add_artist(first_legend)
-        #=======================================================================
-        ax1.set_yscale('log')
-        ax1.legend()
-        fig1.tight_layout()
-        plt.savefig(prob.dataFolder+prob.name+convergence+'h15PML.25lambdathickconvergence.png')
-        #plt.show()
+            if(comm.rank == model_rank): ## only needed for main process
+                areaVals.append(newval)
+                khatRmsErrs[i] = np.sqrt(np.sum(khats**2)/np.size(khats))
+                khatMaxErrs[i] = np.max(khats)
+                intenss = np.abs(farfields[0,:,0])**2 + np.abs(farfields[0,:,1])**2
+                FFrelativeErrors = np.abs( (intenss - mies) / mies )
+                FFrmsRelErrs[i] = np.sqrt(np.sum(FFrelativeErrors**2)/np.size(FFrelativeErrors))
+                FFrmsAbsErrs[i] = np.sqrt(np.sum(np.abs(intenss - mies)**2)/np.size(intenss))
+                FFmaxRelErrs[i] = np.max(FFrelativeErrors)
+        if(comm.rank == model_rank): ## only needed for main process
+            areaVals = np.array(areaVals)
+            
+            fig1 = plt.figure()
+            ax1 = plt.subplot(1, 1, 1)
+            ax1.grid(True)
+            ax1.set_title('Convergence of Different Values')
+            if(convergence == 'meshsize'):
+                ax1.set_xlabel(r'Inverse mesh size ($\lambda / h$)')
+            elif(convergence == 'pmlR0'):
+                ax1.set_xscale('log')
+            
+            real_area = 4*pi*prob.refMeshdata.FF_surface_radius**2
+            ax1.plot(ks, np.abs((real_area-areaVals)/real_area), marker='o', linestyle='--', label = r'area - rel. error')
+            ax1.plot(ks, khatMaxErrs, marker='o', linestyle='--', label = r'khat integral - max. abs. error')
+            ax1.plot(ks, khatRmsErrs, marker='o', linestyle='--', label = r'khat integral - RMS error')
+            ax1.plot(ks, FFrmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
+            ax1.plot(ks, FFrmsAbsErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS abs. error')
+            ax1.plot(ks, FFmaxRelErrs, marker='o', linestyle='--', label = r'Farfield cuts max. rel. error')
+            
+            #=======================================================================
+            # first_legend = ax1.legend(framealpha=0.5, loc = 'lower left') ## extra legend stuff in case I want to plot error for many angles
+            # ##second legend to distinguish between dashed and regular lines (phi- and theta- pols)
+            # handleds = []
+            # line_dashed = mlines.Line2D([], [], color='black', linestyle='--', linewidth=1.5, label=r'max. rel. error') ##fake lines to create second legend elements
+            # handleds.append(line_dashed)
+            # line_solid = mlines.Line2D([], [], color='black', linestyle='solid', linewidth=1.5, label=r'rms rel. error') ##fake lines to create second legend elements
+            # handleds.append(line_solid)
+            # second_legend = ax1.legend(handles=handleds, loc='upper right', framealpha=0.5) #best upper-right
+            # ax1.add_artist(first_legend)
+            #=======================================================================
+            ax1.set_yscale('log')
+            ax1.legend()
+            fig1.tight_layout()
+            plt.savefig(prob.dataFolder+prob.name+convergence+'h15PML.25lambdathickconvergence.png')
+            #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()

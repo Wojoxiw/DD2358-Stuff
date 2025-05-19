@@ -645,72 +645,74 @@ class Scatt3DProblem():
                     print(f'khat calc (should be zero): {np.abs(khatResult):.5e}')
                     print(f'Farfield-surface area, calculated vs real (expected): {np.abs(areaResult)} vs {real_area}. Error: {np.abs(areaResult-real_area):.3e}, rel. error: {np.abs((areaResult-real_area)/real_area):.3e}')
                           
-            if(showPlots):
-                ## also compare internal electric fields inside the sphere, at distances rs
-                fig = plt.figure()
-                numpts = 5001
-                rs = np.linspace(0, meshData.object_radius*3, numpts)
-                negrs = np.linspace(meshData.object_radius*-3, 0, numpts)
-                enears = np.zeros((np.size(rs), 3))
-                enearsbw = np.zeros((np.size(rs), 3)) ## backward (I think)
+                if(showPlots):
+                    ## also compare internal electric fields inside the sphere, at distances rs
+                    fig = plt.figure()
+                    numpts = 5001
+                    rs = np.linspace(0, meshData.object_radius*3, numpts)
+                    negrs = np.linspace(meshData.object_radius*-3, 0, numpts)
+                    enears = np.zeros((np.size(rs), 3))
+                    enearsbw = np.zeros((np.size(rs), 3)) ## backward (I think)
+                    
+                    ### find the simulated values for those radii, at some angle
+                    points = np.zeros((3, numpts*2))
+                    points[0] = np.hstack((negrs, rs)) ## this should be the forward scattering
+                    bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
+                    cells = []
+                    points_on_proc = [] ## points on this processor
+                    cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points.T) # Find cells whose bounding-box collide with the the points
+                    colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, points.T) # Choose one of the cells that contains the point
+                    for i, point in enumerate(points.T):
+                        if len(colliding_cells.links(i)) > 0:
+                            points_on_proc.append(point)
+                            cells.append(colliding_cells.links(i)[0])
+                    #points_on_proc = np.array(points_on_proc, dtype=np.float64) # not needed?
+                    E_values = self.solutions_ref[0][0].eval(points_on_proc, cells)
+                    
+                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                    import miepython.field
+                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    lambdat = c0/freq
+                    x = 2*pi*meshData.object_radius/lambdat
+                    coefs = miepython.core.coefficients(m, x, internal=True)
+                    for q in range(len(rs)):
+                        r = rs[q]
+                        nr = -1*negrs[q] ## still positive, just in other direction due to phi angle
+                        enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi/2, 0)
+                        enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, pi/2, pi)
+                    
+                    enears = np.vstack((enearsbw, enears))
+                    plt.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
+                    plt.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation')
+                    plt.grid(True)
+                    plt.legend()
+                    plt.xlabel('Radius [m]')
+                    plt.ylabel('E-field Magnitude')
                 
-                ### find the simulated values for those radii, at some angle
-                points = np.zeros((3, numpts*2))
-                points[0] = np.hstack((negrs, rs)) ## this should be the forward scattering
-                bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
-                cells = []
-                points_on_proc = [] ## points on this processor
-                cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points.T) # Find cells whose bounding-box collide with the the points
-                colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, points.T) # Choose one of the cells that contains the point
-                for i, point in enumerate(points.T):
-                    if len(colliding_cells.links(i)) > 0:
-                        points_on_proc.append(point)
-                        cells.append(colliding_cells.links(i)[0])
-                #points_on_proc = np.array(points_on_proc, dtype=np.float64) # not needed?
-                E_values = self.solutions_ref[0][0].eval(points_on_proc, cells)
+                    plt.axvline(meshData.object_radius, label = 'radius', color = 'black')
+                    plt.axvline(-1*meshData.object_radius, label = 'radius', color = 'black')
+                    plt.show()
+                    
+                    
+                #===================================================================
+                # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                # mies = np.zeros_like(angles[:, 1])
+                # lambdat = c0/freq
+                # x = 2*pi*meshData.object_radius/lambdat
+                # for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                #     if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
+                #         mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                #     else: ## if not, we are changing theta angles and in the parallel plane
+                #         mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+                # np.savetxt('miestest.out', mies)
+                #===================================================================
                 
-                import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                import miepython.field
-                m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                lambdat = c0/freq
-                x = 2*pi*meshData.object_radius/lambdat
-                coefs = miepython.core.coefficients(m, x, internal=True)
-                for q in range(len(rs)):
-                    r = rs[q]
-                    nr = -1*negrs[q] ## still positive, just in other direction due to phi angle
-                    enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi/2, 0)
-                    enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, pi/2, pi)
-                
-                enears = np.vstack((enearsbw, enears))
-                plt.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
-                plt.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation')
-                plt.grid(True)
-                plt.legend()
-                plt.xlabel('Radius [m]')
-                plt.ylabel('E-field Magnitude')
-            
-                plt.axvline(meshData.object_radius, label = 'radius', color = 'black')
-                plt.axvline(-1*meshData.object_radius, label = 'radius', color = 'black')
-                plt.show()
-                
-                
-            #===================================================================
-            # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-            # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-            # mies = np.zeros_like(angles[:, 1])
-            # lambdat = c0/freq
-            # x = 2*pi*meshData.object_radius/lambdat
-            # for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-            #     if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
-            #         mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
-            #     else: ## if not, we are changing theta angles and in the parallel plane
-            #         mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
-            # np.savetxt('miestest.out', mies)
-            #===================================================================
-            
-            mies = np.loadtxt('miestest.out') ## data for certain object properties
-            vals = areaResult, khatResults, farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
-            return vals
+                mies = np.loadtxt('miestest.out') ## data for certain object properties
+                vals = areaResult, khatResults, farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
+                return vals
+            else: ## for non-main processes, just return zeros
+                return 0, 0, 0, 0
                     
         if(self.comm.rank == 0): ## plotting and returning
                                         
