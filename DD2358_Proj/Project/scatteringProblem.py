@@ -577,7 +577,7 @@ class Scatt3DProblem():
             angles[nvals:, 0] = np.linspace(-90, 270, nvals) ## second half is the E-plane
             angles[nvals:, 1] = 180
             
-        
+        print('test')
         numAngles = np.shape(angles)[0]
         prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
         theta = dolfinx.fem.Constant(meshData.mesh, 0j)
@@ -589,11 +589,13 @@ class Scatt3DProblem():
         signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
         farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
+        print('test2')
         for b in range(self.Nf):
             freq = self.fvec[b]
             k = 2*np.pi*freq/c0
             E = sols[b][0]('+')
             for i in range(numAngles):
+                print('test3')
                 theta.value = angles[i,0]*pi/180 # convert to radians first
                 phi.value = angles[i,1]*pi/180
                 
@@ -605,17 +607,20 @@ class Scatt3DProblem():
                 ## can only integrate scalars
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                
+                print('test4')
                 def evalFs(): ## evaluates the farfield in some given direction khat
                     khatnp = [np.sin(angles[i,0]*pi/180)*np.cos(angles[i,1]*pi/180), np.sin(angles[i,0]*pi/180)*np.sin(angles[i,1]*pi/180), np.cos(angles[i,0]*pi/180)] ## so I can use it in evalFs as regular numbers - not sure how else to do this
                     exp_kr.interpolate(lambda x: np.exp(1j*k*(khatnp[0]*x[0] + khatnp[1]*x[1] + khatnp[2]*x[2])), self.farfield_cells) ## not sure how to use ufl for this expression.
                     prefactor.value = 1j*k/(4*pi)
+                    print('test66')
                     F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
                     F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
+                    print('test77')
                     return np.array((F_theta, F_phi))
-                
+                print('test5')
                 farfieldpart = evalFs()
                 farfieldparts = self.comm.gather(farfieldpart, root=self.model_rank)
+                print('test6')
                 if(self.comm.rank == 0): ## assemble each part as it is made
                     farfields[b, i] = sum(farfieldparts)
                     
