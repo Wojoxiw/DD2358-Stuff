@@ -573,8 +573,8 @@ class Scatt3DProblem():
             nvals = 2*int(360/4) ## must be divisible by 2
             angles = np.zeros((nvals*2, 2))
             angles[:nvals, 0] = 90 ## first half is the H-plane
-            angles[:nvals, 1] = np.linspace(0, 360, nvals)
-            angles[nvals:, 0] = np.linspace(-90, 270, nvals) ## second half is the E-plane
+            angles[:nvals, 1] = np.linspace(-180, 180, nvals)
+            angles[nvals:, 0] = np.linspace(-180, 180, nvals) ## second half is the E-plane
             angles[nvals:, 1] = 180
             
         
@@ -616,10 +616,8 @@ class Scatt3DProblem():
                 
                 farfieldpart = evalFs()
                 farfieldparts = self.comm.gather(farfieldpart, root=self.model_rank)
-                print(self.comm.rank, 'presummation')
                 if(self.comm.rank == 0): ## assemble each part as it is made
                     farfields[b, i] = sum(farfieldparts)
-                    print('One Angle Computed')
         if(self.comm.rank == 0): ## plotting and returning
             if(self.verbosity > 1):
                 print(f'Farfields calculated in {timer()-t1:.3f} s')
@@ -643,7 +641,7 @@ class Scatt3DProblem():
                 areaResult = sum(areaParts)
                 real_area = 4*pi*meshData.FF_surface_radius**2
                 if(self.verbosity>2):
-                    print(f'khat calc (should be zero): {np.abs(khatResult):.5e}')
+                    print(f'khat calc first angle (should be zero): {np.abs(khatResults[0]):.5e}')
                     print(f'Farfield-surface area, calculated vs real (expected): {np.abs(areaResult)} vs {real_area}. Error: {np.abs(areaResult-real_area):.3e}, rel. error: {np.abs((areaResult-real_area)/real_area):.3e}')
                           
                 if(showPlots):
@@ -773,8 +771,8 @@ class Scatt3DProblem():
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')'
                     mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
-                    ax1.plot(angles[:nvals, 1]-180, mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
-                    ax1.plot(angles[nvals:, 0]-90, mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
+                    ax1.plot(angles[:nvals, 1], mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0], mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
                     
                     ##Calculate Mie scattering
                     import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
@@ -790,8 +788,8 @@ class Scatt3DProblem():
                     np.savetxt('mietest.out', mie)
                     
                     mie = np.loadtxt('mietest.out') ## data for some object properties
-                    ax1.plot(angles[:nvals, 1]-180, mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
-                    ax1.plot(angles[nvals:, 0]-90, mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
+                    ax1.plot(angles[:nvals, 1], mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0], mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
                     plt.title('Scattered E-field Intensity Comparison')
                     ax1.legend()
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')

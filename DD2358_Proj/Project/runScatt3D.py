@@ -112,13 +112,13 @@ if __name__ == '__main__':
         
     def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.5, domain_radius=1.3, PML_thickness=0.35, h=h, domain_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 1/3, domain_radius=0.9, PML_thickness=0.5, h=h, domain_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2.5)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2.0)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
-        prob.calcFarField(reference=True, compareToMie = True, showPlots=False)
+        prob.calcFarField(reference=True, compareToMie = True, showPlots=True)
         prevRuns.memTimeAppend(prob)
         
         
@@ -196,8 +196,8 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/9)
-    convergenceTestPlots('pmlR0')
+    testFarField(h=1/40)
+    #convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     
     #===========================================================================
