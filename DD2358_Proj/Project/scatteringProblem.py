@@ -580,11 +580,11 @@ class Scatt3DProblem():
         
         numAngles = np.shape(angles)[0]
         prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
-        theta = dolfinx.fem.Constant(meshData.mesh, 0)
-        phi = dolfinx.fem.Constant(meshData.mesh, 0)
-        khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates 
-        phiHat = ufl.as_vector([-np.sin(phi), np.cos(phi), 0])
-        thetaHat = ufl.as_vector([np.cos(theta)*np.cos(phi), np.cos(theta)*np.sin(phi), -np.sin(theta)])
+        theta = dolfinx.fem.Constant(meshData.mesh, 0j)
+        phi = dolfinx.fem.Constant(meshData.mesh, 0j)
+        khat = ufl.as_vector([ufl.sin(theta)*ufl.cos(phi), ufl.sin(theta)*ufl.sin(phi), ufl.cos(theta)]) ## in cartesian coordinates 
+        phiHat = ufl.as_vector([-ufl.sin(phi), ufl.cos(phi), 0])
+        thetaHat = ufl.as_vector([ufl.cos(theta)*ufl.cos(phi), ufl.cos(theta)*ufl.sin(phi), -ufl.sin(theta)])
         n = ufl.FacetNormal(meshData.mesh)('+')
         signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
@@ -606,9 +606,9 @@ class Scatt3DProblem():
                 self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
                 
-                khat = [np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)] ## so I can use it in evalFs as regular numbers - not sure how else to do this
                 def evalFs(): ## evaluates the farfield in some given direction khat
-                    exp_kr.interpolate(lambda x: np.exp(1j*k*(khat[0]*x[0] + khat[1]*x[1] + khat[2]*x[2])), self.farfield_cells)
+                    khatnp = [np.sin(angles[i,0]*pi/180)*np.cos(angles[i,1]*pi/180), np.sin(angles[i,0]*pi/180)*np.sin(angles[i,1]*pi/180), np.cos(angles[i,0]*pi/180)] ## so I can use it in evalFs as regular numbers - not sure how else to do this
+                    exp_kr.interpolate(lambda x: np.exp(1j*k*(khatnp[0]*x[0] + khatnp[1]*x[1] + khatnp[2]*x[2])), self.farfield_cells) ## not sure how to use ufl for this expression.
                     prefactor.value = 1j*k/(4*pi)
                     F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
                     F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
@@ -624,19 +624,23 @@ class Scatt3DProblem():
                 print(f'Farfields calculated in {timer()-t1:.3f} s')
                     
         if(returnConvergenceVals): ## calculate and print some tests
+            khatResults = np.zeros((numAngles), dtype=complex) ## should really be a real number, but somehow isnt?
+            khatCalc = ufl.inner(khat, n)*self.dS_farfield ## calculate zero from khat . n, for each angle
+            for i in range(numAngles):
+                theta.value = angles[i,0]*pi/180 # convert to radians first
+                phi.value = angles[i,1]*pi/180
+                khatPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(khatCalc))
+                khatParts = self.comm.gather(khatPart, root=self.model_rank)
+                if(self.comm.rank == 0): ## assemble each part as it is made
+                    khatResults[i] = sum(khatParts)
+            
             areaCalc = 1*self.dS_farfield ## calculate area
             areaPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(areaCalc))
             areaParts = self.comm.gather(areaPart, root=self.model_rank)
             
-            khat = ufl.as_vector([np.sin(theta)*np.cos(phi), np.sin(theta)*np.sin(phi), np.cos(theta)]) ## in cartesian coordinates
-            khatCalc = ufl.inner(khat, n)*self.dS_farfield ## calculate zero from khat . n
-            khatPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(khatCalc))
-            khatParts = self.comm.gather(khatPart, root=self.model_rank)
-            
             if(self.comm.rank == 0): ## assemble each part as it is made
                 areaResult = sum(areaParts)
                 real_area = 4*pi*meshData.FF_surface_radius**2
-                khatResult = sum(khatParts)
                 if(self.verbosity>2):
                     print(f'khat calc (should be zero): {np.abs(khatResult):.5e}')
                     print(f'Farfield-surface area, calculated vs real (expected): {np.abs(areaResult)} vs {real_area}. Error: {np.abs(areaResult-real_area):.3e}, rel. error: {np.abs((areaResult-real_area)/real_area):.3e}')
@@ -705,7 +709,7 @@ class Scatt3DProblem():
             #===================================================================
             
             mies = np.loadtxt('miestest.out') ## data for certain object properties
-            vals = [areaResult, khatResult], farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
+            vals = areaResult, khatResults, farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
             return vals
                     
         if(self.comm.rank == 0): ## plotting and returning
