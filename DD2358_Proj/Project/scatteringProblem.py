@@ -648,7 +648,12 @@ class Scatt3DProblem():
                           
                 if(showPlots):
                     ## also compare internal electric fields inside the sphere, at distances rs
-                    fig = plt.figure()
+                    fig1 = plt.figure()
+                    ax1 = plt.subplot(1, 1, 1)
+                    ax1.grid(True)
+                    fig2 = plt.figure()
+                    ax2 = plt.subplot(1, 1, 1)
+                    ax2.grid(True)
                     numpts = 5001
                     rs = np.linspace(0, meshData.object_radius*3, numpts)
                     negrs = np.linspace(meshData.object_radius*-3, 0, numpts)
@@ -711,24 +716,28 @@ class Scatt3DProblem():
                         enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, pi/2, pi)
                     
                     enears = np.vstack((enearsbw, enears))
-                    if(True): ## plot components
-                        plt.plot(points[0], enears[:, 0], label='x-comp. miepython', linestyle = ':', color = 'red')
-                        plt.plot(points[0], enears[:, 1], label='y-comp. miepython', linestyle = ':', color = 'blue')
-                        plt.plot(points[0], enears[:, 2], label='z-comp. miepython', linestyle = ':', color = 'green')
-                        plt.plot(points[0], E_values[:, 0], label='x-comp.', color = 'red')
-                        plt.plot(points[0], E_values[:, 1], label='y-comp.', color = 'blue')
-                        plt.plot(points[0], E_values[:, 2], label='z-comp.', color = 'green')
-                    else: ## plot magnitudes
-                        plt.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
-                        plt.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
-                        plt.plot(points[0], np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
-                    plt.grid(True)
-                    plt.legend()
-                    plt.xlabel('Radius [m]')
-                    plt.ylabel('E-field Magnitude')
-                
+                    ## plot components
+                    ax1.plot(points[0], enears[:, 0], label='x-comp. miepython', linestyle = ':', color = 'red')
+                    ax1.plot(points[0], enears[:, 1], label='y-comp. miepython', linestyle = ':', color = 'blue')
+                    ax1.plot(points[0], enears[:, 2], label='z-comp. miepython', linestyle = ':', color = 'green')
+                    ax1.plot(points[0], E_values[:, 0], label='x-comp.', color = 'red')
+                    ax1.plot(points[0], E_values[:, 1], label='y-comp.', color = 'blue')
+                    ax1.plot(points[0], E_values[:, 2], label='z-comp.', color = 'green')
+                    ## plot magnitudes
+                    ax2.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
+                    ax2.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
+                    ax2.plot(points[0], np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
+                    ax1.legend()
+                    ax2.legend()
+                    ax1.set_xlabel('Radius [m]')
+                    ax2.set_xlabel('Radius [m]')
+                    ax1.set_ylabel('E-field Components')
+                    ax2.set_ylabel('E-field Magnitude')
+                    
                     plt.axvline(meshData.object_radius, label = 'radius', color = 'black')
                     plt.axvline(-1*meshData.object_radius, label = 'radius', color = 'black')
+                    fig1.tight_layout()
+                    fig2.tight_layout()
                     plt.show()
                     
                     
