@@ -616,7 +616,7 @@ class Scatt3DProblem():
                 
                 farfieldpart = evalFs()
                 farfieldparts = self.comm.gather(farfieldpart, root=self.model_rank)
-                print(self.comm.rank, presummation)
+                print(self.comm.rank, 'presummation')
                 if(self.comm.rank == 0): ## assemble each part as it is made
                     farfields[b, i] = sum(farfieldparts)
                     print('One Angle Computed')
@@ -667,9 +667,37 @@ class Scatt3DProblem():
                         if len(colliding_cells.links(i)) > 0:
                             points_on_proc.append(point)
                             cells.append(colliding_cells.links(i)[0])
-                    #points_on_proc = np.array(points_on_proc, dtype=np.float64) # not needed?
-                    E_values = self.solutions_ref[0][0].eval(points_on_proc, cells)
                     
+                    
+                    ###############
+                    ###############
+                    Ex = dolfinx.fem.Function(self.ScalarSpace)
+                    Ey = dolfinx.fem.Function(self.ScalarSpace)
+                    Ez = dolfinx.fem.Function(self.ScalarSpace)
+                    def q_abs(x, Es, pol = 'z'): ## similar to the one in makeOptVectors
+                        cells = []
+                        cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
+                        colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, x.T)
+                        for i, point in enumerate(x.T):
+                            if len(colliding_cells.links(i)) > 0:
+                                cells.append(colliding_cells.links(i)[0])
+                        if(pol == 'z'): ## it is not simple to save the vector itself for some reason...
+                            E_vals = Es.eval(x.T, cells)[:, 2]
+                        elif(pol == 'x'):
+                            E_vals = Es.eval(x.T, cells)[:, 0]
+                        elif(pol == 'y'):
+                            E_vals = Es.eval(x.T, cells)[:, 1]
+                        else:
+                            E_vals = Es.eval(x.T, cells)
+                        return E_vals
+                    sol = self.solutions_ref[0][0] ## fields for the first frequency
+                    Ex.interpolate(functools.partial(q_abs, Es=sol, pol='x'))
+                    Ey.interpolate(functools.partial(q_abs, Es=sol, pol='y'))
+                    Ez.interpolate(functools.partial(q_abs, Es=sol, pol='z'))
+                    ###############
+                    ###############
+                    E_values2 = self.solutions_ref[0][0].eval(points_on_proc, cells) ## less/non-interpolated
+                    E_values = np.hstack((Ex.eval(points_on_proc, cells), Ey.eval(points_on_proc, cells), Ez.eval(points_on_proc, cells)))
                     import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
                     import miepython.field
                     m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
@@ -683,8 +711,17 @@ class Scatt3DProblem():
                         enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, pi/2, pi)
                     
                     enears = np.vstack((enearsbw, enears))
-                    plt.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
-                    plt.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation')
+                    if(True): ## plot components
+                        plt.plot(points[0], enears[:, 0], label='x-comp. miepython', linestyle = ':', color = 'red')
+                        plt.plot(points[0], enears[:, 1], label='y-comp. miepython', linestyle = ':', color = 'blue')
+                        plt.plot(points[0], enears[:, 2], label='z-comp. miepython', linestyle = ':', color = 'green')
+                        plt.plot(points[0], E_values[:, 0], label='x-comp.', color = 'red')
+                        plt.plot(points[0], E_values[:, 1], label='y-comp.', color = 'blue')
+                        plt.plot(points[0], E_values[:, 2], label='z-comp.', color = 'green')
+                    else: ## plot magnitudes
+                        plt.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
+                        plt.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
+                        plt.plot(points[0], np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
                     plt.grid(True)
                     plt.legend()
                     plt.xlabel('Radius [m]')

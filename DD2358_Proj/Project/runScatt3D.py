@@ -124,7 +124,7 @@ if __name__ == '__main__':
         
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(3, 10, 20)
+            ks = np.linspace(15, 20, 20)
         elif(convergence == 'pmlR0'):
             ks = np.linspace(2, 15, 20)
             ks = 10**(-ks)
@@ -145,7 +145,7 @@ if __name__ == '__main__':
                 
             refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 0.35, PML_thickness=1.0, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
             prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=3.5, Nf=1, **probOptions)
-            newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
+            newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=True, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
                 khatRmsErrs[i] = np.sqrt(np.sum(khats**2)/np.size(khats))
@@ -197,8 +197,8 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     #testRun2(h=1/10)
     #testFarField(h=1/9)
-    convergenceTestPlots('pmlR0')
-    #convergenceTestPlots('meshsize')
+    #convergenceTestPlots('pmlR0')
+    convergenceTestPlots('meshsize')
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
