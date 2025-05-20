@@ -77,8 +77,16 @@ class runTimesMems():
                 
             np.savez(self.fpath, prevRuns = self.prevRuns)
     
-    def fitLine(self, x, a, b, c): ## curve to fit the data to - assume some power dependance on various parameters
-        return a*x**c + b
+    def fitLine(self, x, a, b, c, d):
+        '''
+        Curve to fit the data to - assume some power dependance on various parameters
+        :param x: [Size, MPInum]
+        :param a: Sizes coefficient
+        :param b: Some base time
+        :param c: Sizes power dependence
+        :param d: MPInum power dependence
+        '''
+        return a*x[0]**c*x[1]**d + b
     
     def calcStats(self):
         '''
@@ -103,11 +111,13 @@ class runTimesMems():
                 self.numProcesses[i] = run.MPInum
                 self.Nfs[i] = run.Nf
                 self.Nants[i] = run.Nants
+                
+            fitVals = np.vstack((self.sizes, self.numProcesses))
             
             ## Assume computations time scales by problem size, Nfs, and Nants**2, and maybe 1/MPInum
-            self.timeFit = scipy.optimize.curve_fit(self.fitLine, self.sizes, self.times)[0]
+            self.timeFit = scipy.optimize.curve_fit(self.fitLine, fitVals, self.times)[0]
             ## Assume memory cost scales just by problem size
-            self.memFit = scipy.optimize.curve_fit(self.fitLine, self.sizes, self.mems)[0]
+            self.memFit = scipy.optimize.curve_fit(self.fitLine, fitVals, self.mems)[0]
 
     def memTimeEstimation(self, size, Nf = 1, Nant = 1, MPInum = 1, doPrint = False):
         '''
@@ -122,16 +132,18 @@ class runTimesMems():
             if(Nant == 0):
                 Nant = 1 ## the simulation should always run through problem.solve at least once
             self.calcStats() ## prep the data, calculate the curve-fitting
-            esttime = self.fitLine(size, self.timeFit[0], self.timeFit[1], self.timeFit[2])*Nf ## Nf not taken into account for curve_fit, currently
-            estmem = self.fitLine(size, self.memFit[0], self.memFit[1], self.memFit[2])
+            esttime = self.fitLine([size, MPInum], self.timeFit[0], self.timeFit[1], self.timeFit[2], self.timeFit[3])*Nf ## assume *Nf dependence
+            estmem = self.fitLine([size, MPInum], self.memFit[0], self.memFit[1], self.memFit[2], self.memFit[3])
             if(doPrint):
                 print(f'Estimated memory requirement for size {size:.3e}: {estmem:.3f} GB')
                 print(f'Estimated computation time for size {size:.3e}, Nf = {Nf}: {esttime/3600:.3f} hours')
                 
             return estmem, esttime
             
-    def makePlots(self):
+    def makePlots(self, MPInum = -1):
         if(self.comm.rank == 0):
+            if(MPInum == -1):
+                MPInum=self.comm.size ## not sure how to make this the default
             self.calcStats()
             fig1 = plt.figure()
             ax1 = plt.subplot(1, 1, 1)
@@ -141,8 +153,9 @@ class runTimesMems():
             ax1.set_ylabel('Time [hours]')
             ## Times plot
             xs = np.linspace(np.min(self.sizes), np.max(self.sizes), 1000)
+            nums = np.zeros_like(xs) + MPInum
             ax1.scatter(self.sizes, self.times/3600, label='recorded runs')
-            ax1.plot(xs, self.fitLine(xs, self.timeFit[0], self.timeFit[1], self.timeFit[2])/3600, label='curve_fit')
+            ax1.plot(xs, self.fitLine([xs, nums], self.timeFit[0], self.timeFit[1], self.timeFit[2], self.timeFit[3])/3600, label='curve_fit')
             #if(numCells>0 and Nf>0):
                 #plt.scatter(numCells*Nf, time/3600, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Time')
             ax1.legend()
@@ -155,7 +168,7 @@ class runTimesMems():
             ax2.set_xlabel('# FEM Elements')
             ax2.set_ylabel('Memory [GiB] (Approximate)')
             ax2.scatter(self.sizes, self.mems, label='recorded runs')
-            ax2.plot(xs, self.fitLine(xs, self.memFit[0], self.memFit[1], self.memFit[2]), label='curve_fit')
+            ax2.plot(xs, self.fitLine([xs, nums], self.memFit[0], self.memFit[1], self.memFit[2], self.memFit[3]), label='curve_fit')
             #if(numCells>0 and Nf>0):
                 #plt.scatter(numCells, mem, s = 80, facecolors = None, edgecolors = 'red', label = 'Estimated Memory')
             ax2.legend()

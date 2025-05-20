@@ -275,7 +275,7 @@ class Scatt3DProblem():
         def Eport(x): # Set up the excitation - on antenna faces
             """
             Compute the normalized electric field distribution in all ports.
-            :param x: some given position you want to find the field on
+            :param x: Some vector of positions you want to find the field on
             """
             Ep = np.zeros((3, x.shape[1]), dtype=complex)
             for p in range(meshData.N_antennas):
@@ -326,7 +326,7 @@ class Scatt3DProblem():
             - ufl.inner(k00**2*(self.epsr - 1/self.mur*self.mur_bkg*self.epsr_bkg)*Eb, v)*self.dx_dom + eval(F_antennas_str) ## background field and antenna terms
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
-        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## try looking this up to see if some other options might be better (apparently it is hard to find iterative solvers that converge)
+        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"}
         problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
         
         def ComputeFields():
@@ -573,8 +573,8 @@ class Scatt3DProblem():
             nvals = 2*int(360/4) ## must be divisible by 2
             angles = np.zeros((nvals*2, 2))
             angles[:nvals, 0] = 90 ## first half is the H-plane
-            angles[:nvals, 1] = np.linspace(-180, 180, nvals)
-            angles[nvals:, 0] = np.linspace(-180, 180, nvals) ## second half is the E-plane
+            angles[:nvals, 1] = np.linspace(0, 360, nvals)
+            angles[nvals:, 0] = np.linspace(-90, 270, nvals) ## second half is the E-plane
             angles[nvals:, 1] = 180
             
         
@@ -588,23 +588,24 @@ class Scatt3DProblem():
         n = ufl.FacetNormal(meshData.mesh)('+')
         signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
+        
+        #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here. The factor would be 1 and gets cancelled out anyway, though
+        eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
+        
         farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
         for b in range(self.Nf):
             freq = self.fvec[b]
             k = 2*np.pi*freq/c0
             E = sols[b][0]('+')
+            H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
             for i in range(numAngles):
                 theta.value = angles[i,0]*pi/180 # convert to radians first
                 phi.value = angles[i,1]*pi/180
                 
-                #eta0 = float(np.sqrt(self.mur_bkg/self.epsr_bkg)) # following Daniel's script, this should really be etar here. The factor would be 1 and gets cancelled out anyway, though
-                eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
-                
-                H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
-                
                 ## can only integrate scalars
-                self.F_theta = signfactor*prefactor* ufl.inner(thetaHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
-                self.F_phi = signfactor*prefactor* ufl.inner(phiHat, ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))) ))*exp_kr*self.dS_farfield
+                F = signfactor*prefactor*ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))))*exp_kr
+                self.F_theta = ufl.inner(thetaHat, ufl.conj(F))*self.dS_farfield
+                self.F_phi = ufl.inner(phiHat, ufl.conj(F))*self.dS_farfield
                 
                 def evalFs(): ## evaluates the farfield in some given direction khat
                     khatnp = [np.sin(angles[i,0]*pi/180)*np.cos(angles[i,1]*pi/180), np.sin(angles[i,0]*pi/180)*np.sin(angles[i,1]*pi/180), np.cos(angles[i,0]*pi/180)] ## so I can use it in evalFs as regular numbers - not sure how else to do this
@@ -771,8 +772,8 @@ class Scatt3DProblem():
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')'
                     mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
-                    ax1.plot(angles[:nvals, 1], mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
-                    ax1.plot(angles[nvals:, 0], mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
+                    ax1.plot(angles[:nvals, 1]-180, mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0]-90, mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
                     
                     #===========================================================
                     # ##Calculate Mie scattering
@@ -790,10 +791,12 @@ class Scatt3DProblem():
                     #===========================================================
                     
                     mie = np.loadtxt('mietest.out') ## data for some object properties
-                    ax1.plot(angles[:nvals, 1], mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
-                    ax1.plot(angles[nvals:, 0], mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
+                    ax1.plot(angles[:nvals, 1]-180, mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0]-90, mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
                     plt.title('Scattered E-field Intensity Comparison')
                     ax1.legend()
+                    ax1.set_yscale('log')
+                    ax1.grid(True)
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
                     if(showPlots):
                         plt.show()

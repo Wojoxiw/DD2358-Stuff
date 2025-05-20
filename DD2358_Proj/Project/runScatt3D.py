@@ -62,7 +62,7 @@ if __name__ == '__main__':
         filename = 'localCompTimesMems.npz'
     else:
         filename = 'prevRuns.npz'
-    
+        
     runName = 'testRun' # testing
     folder = 'data3D/'
     if(verbosity>2):
@@ -93,7 +93,7 @@ if __name__ == '__main__':
     def testRun(h = 1/2): ## A quick test run to check it works. Default settings make this run in a second
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, object_geom='None', N_antennas=0)
-        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
+        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, MPInum = MPInum, name = runName, excitation = 'planewave')
         #prob.saveEFieldsForAnim()
@@ -103,7 +103,7 @@ if __name__ == '__main__':
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=5)
         dutMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = False, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=5)
-        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
+        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         #refMesh.plotMeshPartition()
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, DUTMeshdata=dutMesh, computeBoth=True, verbosity = verbosity, MPInum = MPInum, name = runName, Nf = 6)
         prob.saveEFieldsForAnim()
@@ -112,8 +112,8 @@ if __name__ == '__main__':
         
     def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 1/3, domain_radius=0.9, PML_thickness=0.5, h=h, domain_geom='sphere', FF_surface = True)
-        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 1/3, domain_radius=1/3+1/2, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
+        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2.0)
         #prob.saveDofsView(prob.refMeshdata)
@@ -145,7 +145,7 @@ if __name__ == '__main__':
                 
             refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = 1/3, PML_thickness=1.0, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
             prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, **probOptions)
-            newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=True, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
+            newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
                 khatRmsErrs[i] = np.sqrt(np.sum(khats**2)/np.size(khats))
@@ -155,6 +155,8 @@ if __name__ == '__main__':
                 FFrmsRelErrs[i] = np.sqrt(np.sum(FFrelativeErrors**2)/np.size(FFrelativeErrors))
                 FFrmsAbsErrs[i] = np.sqrt(np.sum(np.abs(intenss - mies)**2)/np.size(intenss))
                 FFmaxRelErrs[i] = np.max(FFrelativeErrors)
+                if(verbosity>1):
+                    print(f'Run {i+1}/{len(ks)} completed')
         if(comm.rank == model_rank): ## only needed for main process
             areaVals = np.array(areaVals)
             
@@ -189,14 +191,14 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'h15PML1.0lambdathickconvergence.png')
+            plt.savefig(prob.dataFolder+prob.name+convergence+'h15_pmlbig_convergence.png')
             #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/40)
+    #testFarField(h=1/12)
     convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     
@@ -212,9 +214,10 @@ if __name__ == '__main__':
     #     testFarField(h=1/k)
     #===========================================================================
     
+    #filename = 'prevRuns.npz'
     otherprevs = [] ## if adding other files here, specify here (i.e. prevRuns.npz.old)
     #prevRuns = memTimeEstimation.runTimesMems(folder, comm, otherPrevs = otherprevs, filename = filename)
-    #prevRuns.makePlots()
+    #prevRuns.makePlots(MPInum = comm.size)
     #prevRuns.makePlotsSTD()
     
     if(comm.rank == model_rank):
