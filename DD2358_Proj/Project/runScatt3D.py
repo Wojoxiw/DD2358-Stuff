@@ -198,8 +198,8 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/40)
-    convergenceTestPlots('pmlR0')
+    testFarField(h=1/40)
+    #convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     
     #===========================================================================
