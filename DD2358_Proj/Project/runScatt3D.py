@@ -191,15 +191,15 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'convergence.png')
+            plt.savefig(prob.dataFolder+prob.name+convergence+'h15_pml0.5_convergence.png')
             #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    testFarField(h=1/40)
-    #convergenceTestPlots('pmlR0')
+    #testFarField(h=1/40)
+    convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     
     #===========================================================================
