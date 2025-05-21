@@ -125,7 +125,7 @@ if __name__ == '__main__':
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
             ks = np.linspace(4, 40, 25)
-        elif(convergence == 'pmlR0'): ## result of this is that the value doesn't matter so much, fron 1e-2 to 1e-15.
+        elif(convergence == 'pmlR0'): ## result of this is that the value doesn't seem to matter, from 1e-2 to 1e-15.
             ks = np.linspace(0, 25, 20)
             ks = 10**(-ks)
             
@@ -198,7 +198,7 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/15)
+    #testFarField(h=1/25)
     #convergenceTestPlots('pmlR0')
     convergenceTestPlots('meshsize')
     
