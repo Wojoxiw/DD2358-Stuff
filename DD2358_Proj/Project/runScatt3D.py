@@ -118,15 +118,15 @@ if __name__ == '__main__':
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2.0)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
-        prob.calcFarField(reference=True, compareToMie = True, showPlots=False)
+        prob.calcFarField(reference=True, compareToMie = True, showPlots=True, returnConvergenceVals=False)
         prevRuns.memTimeAppend(prob)
         
         
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(4, 40, 20)
-        elif(convergence == 'pmlR0'):
-            ks = np.linspace(2, 15, 20)
+            ks = np.linspace(4, 40, 25)
+        elif(convergence == 'pmlR0'): ## result of this is that the value doesn't matter so much, fron 1e-2 to 1e-15.
+            ks = np.linspace(0, 25, 20)
             ks = 10**(-ks)
             
         areaVals = [] ## vals returned from the calculations
@@ -151,7 +151,7 @@ if __name__ == '__main__':
                 khatRmsErrs[i] = np.sqrt(np.sum(khats**2)/np.size(khats))
                 khatMaxErrs[i] = np.max(khats)
                 intenss = np.abs(farfields[0,:,0])**2 + np.abs(farfields[0,:,1])**2
-                FFrelativeErrors = np.abs( (intenss - mies) / mies )
+                FFrelativeErrors = np.abs( (intenss - mies) / mies ) /np.max(mies)  ## divided again by the max. mie intensity, to make it even more relative
                 FFrmsRelErrs[i] = np.sqrt(np.sum(FFrelativeErrors**2)/np.size(FFrelativeErrors))
                 FFrmsAbsErrs[i] = np.sqrt(np.sum(np.abs(intenss - mies)**2)/np.size(intenss))
                 FFmaxRelErrs[i] = np.max(FFrelativeErrors)
@@ -191,16 +191,16 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'h15_pml0.5_convergence.png')
+            plt.savefig(prob.dataFolder+prob.name+convergence+'convergence.png')
             #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    testFarField(h=1/40)
+    #testFarField(h=1/15)
     #convergenceTestPlots('pmlR0')
-    #convergenceTestPlots('meshsize')
+    convergenceTestPlots('meshsize')
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):

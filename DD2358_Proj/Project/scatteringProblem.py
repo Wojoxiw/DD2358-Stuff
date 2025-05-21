@@ -61,7 +61,7 @@ class Scatt3DProblem():
                  PW_pol = np.array([0, 0, 1]), ## incident polarization of the plane-wave, if used above. Default is along the z-axis
                  makeOptVects = True, ## if True, compute and saves the optimization vectors. Turn False if not needed
                  computeBoth = False, ## if True and computeImmediately is True, computes both ref and dut cases.
-                 PML_R0 = 1e-10 ## 'intended damping for reflectinos from the PML'
+                 PML_R0 = 1e-10 ## 'intended damping for reflections from the PML', or something similar...
                  ):
         """Initialize the problem."""
         
@@ -604,8 +604,8 @@ class Scatt3DProblem():
                 
                 ## can only integrate scalars
                 F = signfactor*prefactor*ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))))*exp_kr
-                self.F_theta = ufl.inner(thetaHat, ufl.conj(F))*self.dS_farfield
-                self.F_phi = ufl.inner(phiHat, ufl.conj(F))*self.dS_farfield
+                self.F_theta = ufl.dot(thetaHat, F)*self.dS_farfield
+                self.F_phi = ufl.dot(phiHat, F)*self.dS_farfield
                 
                 def evalFs(): ## evaluates the farfield in some given direction khat
                     khatnp = [np.sin(angles[i,0]*pi/180)*np.cos(angles[i,1]*pi/180), np.sin(angles[i,0]*pi/180)*np.sin(angles[i,1]*pi/180), np.cos(angles[i,0]*pi/180)] ## so I can use it in evalFs as regular numbers - not sure how else to do this
@@ -711,8 +711,8 @@ class Scatt3DProblem():
                     for q in range(len(rs)):
                         r = rs[q]
                         nr = -1*negrs[q] ## still positive, just in other direction due to phi angle
-                        enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi/2, 0)
-                        enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, pi/2, pi)
+                        enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi, 0)
+                        enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, 0, pi/2)
                     
                     enears = np.vstack((enearsbw, enears))
                     ## plot components
