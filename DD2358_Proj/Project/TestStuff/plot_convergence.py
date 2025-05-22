@@ -3,12 +3,12 @@ from matplotlib import pyplot as plt
 from scipy.constants import c as c0
 import miepython
 
-epsr = 2 - 0j
-a = 1e-2
+epsr = 3.5 - 0j
 f0 = 10e9
 lambda0 = c0/f0
+a = lambda0*.45
 #hfactors = np.array([5, 10, 20, 30, 40], dtype=float)
-hfactors = np.array([5, 10, 15], dtype=float)
+hfactors = np.array([5, 10, 15, 20], dtype=float)
 
 def ComputeErrors(sol, ref):
     abs_error = np.sqrt(np.sum(np.abs(sol - ref)**2)/len(sol))
@@ -45,8 +45,8 @@ for hfactor in hfactors:
     plt.figure()
     plt.semilogy(cut, ffsq_Eplane, label='E plane')
     plt.semilogy(cut, ffsq_Hplane, label='H plane')
-    plt.semilogy(cut, mie_E, ':', label='Mie E')
-    plt.semilogy(cut, mie_H, ':', label='Mie H')
+    plt.semilogy(cut, mie_E, '--', label='Mie E')
+    plt.semilogy(cut, mie_H, '--', label='Mie H')
     plt.xlabel('Angle (degrees)')
     plt.grid()
     plt.legend(loc='best')
