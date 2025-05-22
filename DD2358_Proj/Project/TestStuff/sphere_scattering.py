@@ -221,12 +221,12 @@ class ScattSphereProblem():
 
     def ComputeFarField(self, angles = np.array([[90, 180], [90, 0]])):
         numAngles = angles.shape[0]
-        prefactor = dolfinx.fem.Constant(meshData.mesh, 0j)
+        prefactor = dolfinx.fem.Constant(self.mesh, 0j)
         n = ufl.FacetNormal(self.mesh)('+')
-        signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(meshData.mesh))) # Enforce outward pointing normal
+        signfactor = ufl.sign(ufl.inner(n, ufl.SpatialCoordinate(self.mesh))) # Enforce outward pointing normal
         exp_kr = dolfinx.fem.Function(self.ScalarSpace)
         farfields = np.zeros((numAngles, 2), dtype=complex) ## for each angle, E_theta and E_phi
-        self.lambda0 = c0/self.f0
+
         k0 = float(2*np.pi/self.lambda0)
         eta0 = float(np.sqrt(mu0/eps0))
         for i in range(numAngles):
@@ -271,13 +271,13 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     model_rank = 0
 
-    epsr = 2 - 0j
-    a = 1e-2
+    epsr = 3.5 - 0j
     f0 = 10e9
     lambda0 = c0/f0
+    a = lambda0*.45
     fem_degree = 1
     #hfactors = np.array([10, 20, 30, 40], dtype=float)
-    hfactors = np.array([5, 10, 15], dtype=float)
+    hfactors = np.array([12], dtype=float)
 
     for hfactor in hfactors:
         h = lambda0/hfactor

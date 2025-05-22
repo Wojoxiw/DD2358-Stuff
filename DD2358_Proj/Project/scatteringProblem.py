@@ -214,7 +214,7 @@ class Scatt3DProblem():
         :param k: Frequency used for coordinate stretching.
         '''
         # Set up the PML
-        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=self.PML_R0):
+        def pml_stretch(y, x, k, x_dom=0, x_pml=1, n=3, R0=np.exp(-10)):
             '''
             Calculates the PML stretching of a coordinate
             :param y: the coordinate to be stretched
@@ -625,7 +625,7 @@ class Scatt3DProblem():
                     
         if(returnConvergenceVals): ## calculate and print some tests
             khatResults = np.zeros((numAngles), dtype=complex) ## should really be a real number, but somehow isnt?
-            khatCalc = ufl.inner(khat, n)*self.dS_farfield ## calculate zero from khat . n, for each angle
+            khatCalc = ufl.dot(khat, n)*self.dS_farfield ## calculate zero from khat . n, for each angle
             for i in range(numAngles):
                 theta.value = angles[i,0]*pi/180 # convert to radians first
                 phi.value = angles[i,1]*pi/180
@@ -775,25 +775,23 @@ class Scatt3DProblem():
                     ax1.plot(angles[:nvals, 1]-180, mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
                     ax1.plot(angles[nvals:, 0]-90, mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
                     
-                    #===========================================================
-                    # ##Calculate Mie scattering
-                    # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                    # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                    # mie = np.zeros_like(angles[:, 1])
-                    # lambdat = c0/freq
-                    # x = 2*pi*meshData.object_radius/lambdat
-                    # for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-                    #     if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
-                    #         mie[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
-                    #     else: ## if not, we are changing theta angles and in the parallel plane
-                    #         mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
-                    # np.savetxt('mietest.out', mie)
-                    #===========================================================
+                    ##Calculate Mie scattering
+                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    mie = np.zeros_like(angles[:, 1])
+                    lambdat = c0/freq
+                    x = 2*pi*meshData.object_radius/lambdat
+                    for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                        if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
+                            mie[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                        else: ## if not, we are changing theta angles and in the parallel plane
+                            mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+                    np.savetxt('mietest.out', mie)
                     
                     mie = np.loadtxt('mietest.out') ## data for some object properties
                     ax1.plot(angles[:nvals, 1]-180, mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
                     ax1.plot(angles[nvals:, 0]-90, mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
-                    plt.title('Scattered E-field Intensity Comparison')
+                    plt.title(f'Scattered E-field Intensity Comparison ($\lambda/h=${lambdat/meshData.h:.1f})')
                     ax1.legend()
                     ax1.set_yscale('log')
                     ax1.grid(True)
