@@ -202,8 +202,8 @@ if __name__ == '__main__':
     #actualProfilerRunning()
     #testRun2(h=1/10)
     #testFarField(h=1/20)
-    convergenceTestPlots('pmlR0')
-    #convergenceTestPlots('meshsize')
+    #convergenceTestPlots('pmlR0')
+    convergenceTestPlots('meshsize')
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
