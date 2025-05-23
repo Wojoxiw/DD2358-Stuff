@@ -58,6 +58,7 @@ class runTimesMems():
             self.Nants = prob.refMeshdata.N_antennas # number of antennas - computations are for each antenna pair
             self.size = prob.refMeshdata.ncells # Computation size (number of FEM elements)
             self.mem = prob.memCost # Total memory cost
+            self.fem_degree = prob.fem_degree ## Finite element degree
             self.extraInfo = extraInfo
             
     def memTimeAppend(self, run, extraInfo = ''):

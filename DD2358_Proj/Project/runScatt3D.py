@@ -112,10 +112,10 @@ if __name__ == '__main__':
         
     def testFarField(h = 1/12): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .45, domain_radius=.95, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=3.5)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', freqs = freqs, material_epsr=2.0)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         prob.calcFarField(reference=True, compareToMie = True, showPlots=True, returnConvergenceVals=False)
@@ -124,7 +124,7 @@ if __name__ == '__main__':
         
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(4, 25, 6)
+            ks = np.linspace(4, 20, 6)
         elif(convergence == 'pmlR0'): ## result of this is that the value doesn't seem to matter, from 1e-2 to 1e-15.
             ks = np.linspace(0, 25, 20)
             ks = 10**(-ks)
@@ -134,6 +134,7 @@ if __name__ == '__main__':
         FFrmsveryRelErrs = np.zeros(len(ks))
         FFrmsAbsErrs = np.zeros(len(ks))
         FFmaxRelErrs = np.zeros(len(ks))
+        FFforwardrelErr = np.zeros(len(ks))
         khatRmsErrs = np.zeros(len(ks))
         khatMaxErrs = np.zeros(len(ks))
         meshOptions = dict()
@@ -144,20 +145,21 @@ if __name__ == '__main__':
             elif(convergence == 'pmlR0'):
                 probOptions = dict(PML_R0 = ks[i])
                 
-            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .4, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=3.0, Nf=1, **probOptions)
+            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, fem_degree=1, **probOptions)
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
                 khatRmsErrs[i] = np.sqrt(np.sum(khats**2)/np.size(khats))
                 khatMaxErrs[i] = np.max(khats)
                 intenss = np.abs(farfields[0,:,0])**2 + np.abs(farfields[0,:,1])**2
-                FFrelativeErrors = np.abs( (intenss - mies) / mies )
+                FFrelativeErrors = np.abs( (intenss - mies) ) / np.abs( mies )
                 FFrmsRelErrs[i] = np.sqrt(np.sum(FFrelativeErrors**2)/np.size(FFrelativeErrors))
-                FFvrelativeErrors = np.abs( (intenss - mies) / np.max(mies) ) ## relative to the max. mie intensity, to make it even more relative
+                FFvrelativeErrors = np.abs( (intenss - mies) ) / np.max(np.abs(mies)) ## relative to the max. mie intensity, to make it even more relative
                 FFrmsveryRelErrs[i] = np.sqrt(np.sum(FFvrelativeErrors**2)/np.size(FFvrelativeErrors))
                 FFrmsAbsErrs[i] = np.sqrt(np.sum(np.abs(intenss - mies)**2)/np.size(intenss))
                 FFmaxRelErrs[i] = np.max(FFrelativeErrors)
+                FFforwardrelErr[i] = np.abs( (intenss[int(360/4)] - mies[int(360/4)])) / np.abs(mies[int(360/4)])
                 if(verbosity>1):
                     print(f'Run {i+1}/{len(ks)} completed')
         if(comm.rank == model_rank): ## only needed for main process
@@ -177,8 +179,9 @@ if __name__ == '__main__':
             ax1.plot(ks, khatMaxErrs, marker='o', linestyle='--', label = r'khat integral - max. abs. error')
             ax1.plot(ks, khatRmsErrs, marker='o', linestyle='--', label = r'khat integral - RMS error')
             ax1.plot(ks, FFrmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
-            #ax1.plot(ks, FFrmsAbsErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS abs. error')
+            ax1.plot(ks, FFrmsAbsErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS abs. error')
             ax1.plot(ks, FFrmsveryRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS. veryrel. error')
+            ax1.plot(ks, FFforwardrelErr, marker='o', linestyle='--', label = r'Farfield forward rel. error')
             
             #=======================================================================
             # first_legend = ax1.legend(framealpha=0.5, loc = 'lower left') ## extra legend stuff in case I want to plot error for many angles
@@ -194,14 +197,14 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'R.43epsrconvergence.png')
+            plt.savefig(prob.dataFolder+prob.name+convergence+'convergence.png')
             #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/20)
+    #testFarField(h=1/8)
     #convergenceTestPlots('pmlR0')
     convergenceTestPlots('meshsize')
     
