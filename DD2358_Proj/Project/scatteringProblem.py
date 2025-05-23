@@ -717,7 +717,7 @@ class Scatt3DProblem():
                         :param x: some given position you want to find the field on
                         :param k: wavenumber
                         '''
-                        E_pw = np.array([0, -1, 0]) # y-polarized
+                        E_pw = np.array([1, 0, 0]) # x-polarized
                         k_pw = k* np.array([0, 0, 1]) ## z-directed
                         E_pw = E_pw*np.exp(-1j*np.dot(k_pw, x))
                         return E_pw
@@ -735,7 +735,7 @@ class Scatt3DProblem():
                             t2 = 0
                         
                         enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi, 0) - t*planeWave(points[:, q], k=2*pi/lambdat)
-                        enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, 0, pi/2) - t2*planeWave(points[:, q+numpts], k=2*pi/lambdat)
+                        enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, 0, 0) - t2*planeWave(points[:, q+numpts], k=2*pi/lambdat)
                         ## subtract incident fields also
                     
                     enears = np.vstack((enearsbw, enears))
@@ -751,10 +751,11 @@ class Scatt3DProblem():
                     ax2.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
                     ax2.plot(points[0], np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
                     ## plot real/imags
-                    ax3.plot(points[0], np.real(E_values[:, 2]), label='sim., real')
-                    ax3.plot(points[0], np.imag(E_values[:, 2]), label='sim., imag.')
-                    ax3.plot(points[0], np.real(enears[:, 1]), label='miepython, real', linestyle = ':')
-                    ax3.plot(points[0], np.imag(enears[:, 1]), label='miepython, imag.', linestyle = ':')
+                    ax3.plot(points[0], np.real(E_values[:, 2]), label='sim., z-pol real')
+                    ax3.plot(points[0], np.imag(E_values[:, 2]), label='sim., z-pol imag.')
+                    ax3.plot(points[0], np.real(enears[:, 1]), label='miepython, theta-pol real', linestyle = ':')
+                    ax3.plot(points[0], np.imag(enears[:, 1]), label='miepython, theta-pol imag.', linestyle = ':')
+                    
                     ax1.legend()
                     ax2.legend()
                     ax3.legend()
