@@ -110,7 +110,7 @@ if __name__ == '__main__':
         prevRuns.memTimeAppend(prob)
         postProcessing.testSVD(prob.dataFolder+prob.name)
         
-    def testFarField(h = 1/12, fem_degree=1): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
+    def testFarField(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
@@ -118,15 +118,19 @@ if __name__ == '__main__':
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', freqs = freqs, material_epsr=2.0, fem_degree=fem_degree)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
-        prob.calcFarField(reference=True, compareToMie = True, showPlots=True, returnConvergenceVals=False)
+        prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots, returnConvergenceVals=False)
+        if(showPlots):
+            prob.calcNearField(direction='side')
         prevRuns.memTimeAppend(prob)
         
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(4, 20, 6)
-        elif(convergence == 'pmlR0'): ## result of this is that the value doesn't seem to matter, from 1e-2 to 1e-15.
-            ks = np.linspace(0, 25, 30)
+            ks = np.linspace(4, 40, 22)
+        elif(convergence == 'pmlR0'): ## result of this is that the value must be below 1e-2, from there further reduction matches the forward-scattering better, the back-scattering less
+            ks = np.linspace(0, 25, 3)
             ks = 10**(-ks)
+        elif(convergence == 'dxquaddeg'): ## Result of this showed a large increase in time near the end, and an accuracy improvement for increasing from 2 to 3. Not sending any value causes a huge memory cost/error (process gets killed).
+            ks = np.arange(1, 20)
             
         areaVals = [] ## vals returned from the calculations
         FFrmsRelErrs = np.zeros(len(ks)) ## for the farfields
@@ -143,9 +147,11 @@ if __name__ == '__main__':
                 meshOptions = dict(h = 1/ks[i])
             elif(convergence == 'pmlR0'):
                 probOptions = dict(PML_R0 = ks[i])
+            elif(convergence == 'dxquaddeg'):
+                probOptions = dict(quaddeg = ks[i])
                 
-            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, h=1/12, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, fem_degree=2, **probOptions)
+            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', FF_surface = True, **meshOptions)
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, fem_degree=1, **probOptions)
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
@@ -171,7 +177,10 @@ if __name__ == '__main__':
             if(convergence == 'meshsize'):
                 ax1.set_xlabel(r'Inverse mesh size ($\lambda / h$)')
             elif(convergence == 'pmlR0'):
+                ax1.set_xlabel(r'R0')
                 ax1.set_xscale('log')
+            elif(convergence == 'dxquaddeg'):
+                ax1.set_xlabel(r'dx Quadrature Degree')
             
             real_area = 4*pi*prob.refMeshdata.FF_surface_radius**2
             ax1.plot(ks, np.abs((real_area-areaVals)/real_area), marker='o', linestyle='--', label = r'area - rel. error')
@@ -185,16 +194,17 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'degree2hover12convergence.png')
-            #plt.show()
+            plt.savefig(prob.dataFolder+prob.name+convergence+'convergence.png')
+            plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/8, fem_degree=3)
-    convergenceTestPlots('pmlR0')
-    #convergenceTestPlots('meshsize')
+    #testFarField(h=1/10, fem_degree=1, showPlots=True)
+    #convergenceTestPlots('pmlR0')
+    convergenceTestPlots('meshsize')
+    #convergenceTestPlots('dxquaddeg')
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):

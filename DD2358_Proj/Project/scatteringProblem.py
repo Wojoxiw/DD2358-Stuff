@@ -57,11 +57,12 @@ class Scatt3DProblem():
                  computeRef = True, # If computing immediately, computes the reference simulation, where defects are not included
                  ErefEdut = False, # compute optimization vectors with Eref*Edut, a less-approximated version of the equation. Should provide better results, but can only be used in simulation
                  excitation = 'antennas', # if 'planewave', sends in a planewave from the +x-axis, otherwise antenna excitation as normal
-                 PW_dir = np.array([-1, 0, 0]), ## incident direction of the plane-wave, if used above. Default is coming in from the x-axis
-                 PW_pol = np.array([0, 0, 1]), ## incident polarization of the plane-wave, if used above. Default is along the z-axis
+                 PW_dir = np.array([0, 0, 1]), ## incident direction of the plane-wave, if used above. Default is coming in from the z-axis, to align with miepython
+                 PW_pol = np.array([1, 0, 0]), ## incident polarization of the plane-wave, if used above. Default is along the x-axis
                  makeOptVects = True, ## if True, compute and saves the optimization vectors. Turn False if not needed
                  computeBoth = False, ## if True and computeImmediately is True, computes both ref and dut cases.
-                 PML_R0 = 1e-10 ## 'intended damping for reflections from the PML', or something similar...
+                 PML_R0 = 1e-11, ## 'intended damping for reflections from the PML', or something similar...
+                 quaddeg = 5, ## quadrature degree for dx, default to 5 to avoid slowdown with pml if it defaults to higher?
                  ):
         """Initialize the problem."""
         
@@ -89,6 +90,7 @@ class Scatt3DProblem():
             self.fvec = np.linspace(f0-BW/2, f0+BW/2, Nf)  # Vector of simulation frequencies
             
         self.PML_R0 = PML_R0
+        self.dxquaddeg = quaddeg
             
         self.epsr_bkg = epsr_bkg
         self.mur_bkg = mur_bkg
@@ -161,7 +163,7 @@ class Scatt3DProblem():
         self.ScalarSpace = dolfinx.fem.functionspace(meshData.mesh, ('CG', self.fem_degree))
         self.Wspace = dolfinx.fem.functionspace(meshData.mesh, ("DG", 0))
         # Create measures for subdomains and surfaces
-        self.dx = ufl.Measure('dx', domain=meshData.mesh, subdomain_data=meshData.subdomains, metadata={'quadrature_degree': 5})
+        self.dx = ufl.Measure('dx', domain=meshData.mesh, subdomain_data=meshData.subdomains, metadata={'quadrature_degree': self.dxquaddeg})
         self.dx_dom = self.dx((meshData.domain_marker, meshData.mat_marker, meshData.defect_marker))
         self.dx_pml = self.dx(meshData.pml_marker)
         self.ds = ufl.Measure('ds', domain=meshData.mesh, subdomain_data=meshData.boundaries)
@@ -341,6 +343,7 @@ class Scatt3DProblem():
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
         petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"}
+        petsc_options={"ksp_type": "gmres", "ksp_rtol": 1e-9, "ksp_atol": 1e-13, "ksp_max_it": 3000, "pc_type": "none"}
         problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
         
         def ComputeFields():
@@ -568,14 +571,14 @@ class Scatt3DProblem():
             sols = self.solutions_dut
         ## check what angles to compute
         if(self.Nf > 2 and not returnConvergenceVals):
-            angles = np.array([[90, 180], [90, 0]])
+            angles = np.array([[0, 0], [180, 0]]) ## forward + backward
         elif(returnConvergenceVals or compareToMie):
             nvals = 2*int(360/4) ## must be divisible by 2
             angles = np.zeros((nvals*2, 2))
-            angles[:nvals, 0] = 90 ## first half is the H-plane
-            angles[:nvals, 1] = np.linspace(0, 360, nvals)
-            angles[nvals:, 0] = np.linspace(-90, 270, nvals) ## second half is the E-plane
-            angles[nvals:, 1] = 180
+            angles[:nvals, 0] = np.linspace(-180, 180, nvals) ## first half is the H-plane
+            angles[:nvals, 1] = 90
+            angles[nvals:, 0] = np.linspace(-180, 180, nvals) ## second half is the E-plane
+            angles[nvals:, 1] = 0
             
         
         numAngles = np.shape(angles)[0]
@@ -645,142 +648,6 @@ class Scatt3DProblem():
                     print(f'khat calc first angle (should be zero): {np.abs(khatResults[0]):.5e}')
                     print(f'Farfield-surface area, calculated vs real (expected): {np.abs(areaResult)} vs {real_area}. Error: {np.abs(areaResult-real_area):.3e}, rel. error: {np.abs((areaResult-real_area)/real_area):.3e}')
                           
-                if(showPlots):
-                    ## also compare internal electric fields inside the sphere, at distances rs
-                    fig1 = plt.figure()
-                    ax1 = plt.subplot(1, 1, 1)
-                    ax1.grid(True)
-                    fig2 = plt.figure()
-                    ax2 = plt.subplot(1, 1, 1)
-                    ax2.grid(True)
-                    fig3 = plt.figure()
-                    ax3 = plt.subplot(1, 1, 1)
-                    ax3.grid(True)
-                    numpts = 5001
-                    rs = np.linspace(0, meshData.object_radius*3, numpts)
-                    negrs = np.linspace(meshData.object_radius*-3, 0, numpts)
-                    enears = np.zeros((np.size(rs), 3), dtype=complex)
-                    enearsbw = np.zeros((np.size(rs), 3), dtype=complex) ## backward (I think)
-                    
-                    ### find the simulated values for those radii, at some angle
-                    points = np.zeros((3, numpts*2))
-                    points[0] = np.hstack((negrs, rs)) ## this should be the forward scattering
-                    bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
-                    cells = []
-                    points_on_proc = [] ## points on this processor
-                    cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points.T) # Find cells whose bounding-box collide with the the points
-                    colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, points.T) # Choose one of the cells that contains the point
-                    for i, point in enumerate(points.T):
-                        if len(colliding_cells.links(i)) > 0:
-                            points_on_proc.append(point)
-                            cells.append(colliding_cells.links(i)[0])
-                    
-                    
-                    ###############
-                    ###############
-                    Ex = dolfinx.fem.Function(self.ScalarSpace)
-                    Ey = dolfinx.fem.Function(self.ScalarSpace)
-                    Ez = dolfinx.fem.Function(self.ScalarSpace)
-                    def q_abs(x, Es, pol = 'z'): ## similar to the one in makeOptVectors
-                        cells = []
-                        cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
-                        colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, x.T)
-                        for i, point in enumerate(x.T):
-                            if len(colliding_cells.links(i)) > 0:
-                                cells.append(colliding_cells.links(i)[0])
-                        if(pol == 'z'): ## it is not simple to save the vector itself for some reason...
-                            E_vals = Es.eval(x.T, cells)[:, 2]
-                        elif(pol == 'x'):
-                            E_vals = Es.eval(x.T, cells)[:, 0]
-                        elif(pol == 'y'):
-                            E_vals = Es.eval(x.T, cells)[:, 1]
-                        else:
-                            E_vals = Es.eval(x.T, cells)
-                        return E_vals
-                    sol = self.solutions_ref[0][0] ## fields for the first frequency
-                    Ex.interpolate(functools.partial(q_abs, Es=sol, pol='x'))
-                    Ey.interpolate(functools.partial(q_abs, Es=sol, pol='y'))
-                    Ez.interpolate(functools.partial(q_abs, Es=sol, pol='z'))
-                    ###############
-                    ###############
-                    E_values2 = self.solutions_ref[0][0].eval(points_on_proc, cells) ## less/non-interpolated
-                    E_values = np.hstack((Ex.eval(points_on_proc, cells), Ey.eval(points_on_proc, cells), Ez.eval(points_on_proc, cells)))
-                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                    import miepython.field
-                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                    lambdat = c0/freq
-                    x = 2*pi*meshData.object_radius/lambdat
-                    coefs = miepython.core.coefficients(m, x, internal=True)
-                    def planeWave(x, k):
-                        '''
-                        The miepython incident field - presumably incident from the z-axis, and x-polarized
-                        :param x: some given position you want to find the field on
-                        :param k: wavenumber
-                        '''
-                        E_pw = np.array([1, 0, 0]) # x-polarized
-                        k_pw = k* np.array([0, 0, 1]) ## z-directed
-                        E_pw = E_pw*np.exp(-1j*np.dot(k_pw, x))
-                        return E_pw
-                    
-                    for q in range(len(rs)):
-                        r = rs[q]
-                        nr = -1*negrs[q] ## still positive, just in other direction due to phi angle
-                        if(np.abs(r)<meshData.object_radius): ## miepython seems to include the incident field inside the sphere
-                            t = 1
-                        else:
-                            t = 0
-                        if(np.abs(nr)<meshData.object_radius): ## miepython seems to include the incident field inside the sphere
-                            t2 = 1
-                        else:
-                            t2 = 0
-                        
-                        enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi, 0) - t*planeWave(points[:, q], k=2*pi/lambdat)
-                        enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, 0, 0) - t2*planeWave(points[:, q+numpts], k=2*pi/lambdat)
-                        ## subtract incident fields also
-                    
-                    enears = np.vstack((enearsbw, enears))
-                    ## plot components
-                    ax1.plot(points[0], np.abs(enears[:, 0]), label='r-comp. miepython', linestyle = ':', color = 'red')
-                    ax1.plot(points[0], np.abs(enears[:, 1]), label='theta-comp. miepython', linestyle = ':', color = 'blue')
-                    ax1.plot(points[0], np.abs(enears[:, 2]), label='phi-comp. miepython', linestyle = ':', color = 'green')
-                    ax1.plot(points[0], np.abs(E_values[:, 0]), label='x-comp.', color = 'red')
-                    ax1.plot(points[0], np.abs(E_values[:, 1]), label='y-comp.', color = 'blue')
-                    ax1.plot(points[0], np.abs(E_values[:, 2]), label='z-comp.', color = 'green')
-                    ## plot magnitudes
-                    ax2.plot(points[0], np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
-                    ax2.plot(points[0], np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
-                    ax2.plot(points[0], np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
-                    ## plot real/imags
-                    ax3.plot(points[0], np.real(E_values[:, 2]), label='sim., z-pol real')
-                    ax3.plot(points[0], np.imag(E_values[:, 2]), label='sim., z-pol imag.')
-                    ax3.plot(points[0], np.real(enears[:, 1]), label='miepython, theta-pol real', linestyle = ':')
-                    ax3.plot(points[0], np.imag(enears[:, 1]), label='miepython, theta-pol imag.', linestyle = ':')
-                    
-                    ax1.legend()
-                    ax2.legend()
-                    ax3.legend()
-                    ax1.set_xlabel('Radius [m]')
-                    ax2.set_xlabel('Radius [m]')
-                    ax3.set_xlabel('Radius [m]')
-                    ax1.set_ylabel('E-field Components')
-                    ax2.set_ylabel('E-field Magnitude')
-                    ax3.set_ylabel('E-field Components')
-                    ax1.set_title('Absolute values of components')
-                    ax2.set_title('E-field magnitudes')
-                    ax3.set_title('Real/imag. parts of incident pol.')
-                    
-                    ax1.axvline(meshData.object_radius, label = 'radius', color = 'black')
-                    ax1.axvline(-1*meshData.object_radius, color = 'black')
-                    ax2.axvline(meshData.object_radius, label = 'radius', color = 'black')
-                    ax2.axvline(-1*meshData.object_radius, color = 'black')
-                    ax3.axvline(meshData.object_radius, label = 'radius', color = 'black')
-                    ax3.axvline(-1*meshData.object_radius, color = 'black')
-                    fig1.tight_layout()
-                    fig2.tight_layout()
-                    fig3.tight_layout()
-                    plt.show()
-                    
-                    
                 #===============================================================
                 # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
                 # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
@@ -813,8 +680,8 @@ class Scatt3DProblem():
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,0]), label = 'theta-pol')
                     #plt.plot(angles[:, 1], np.abs(farfields[b,:,1]), label = 'phi-pol')'
                     mag = np.abs(farfields[b,:,0])**2 + np.abs(farfields[b,:,1])**2
-                    ax1.plot(angles[:nvals, 1]-180, mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
-                    ax1.plot(angles[nvals:, 0]-90, mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
+                    ax1.plot(angles[:nvals, 0], mag[:nvals], label = 'Integrated (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '-') ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0], mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
                     
                     ##Calculate Mie scattering
                     import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
@@ -823,23 +690,20 @@ class Scatt3DProblem():
                     lambdat = c0/freq
                     x = 2*pi*meshData.object_radius/lambdat
                     for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-                        if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
-                            mie[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                        if(angles[i, 1] == 90): ## if theta=90, then this is H-plane/perpendicular
+                            mie[i] = miepython.i_per(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
                         else: ## if not, we are changing theta angles and in the parallel plane
-                            mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+                            mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
                     np.savetxt('mietest.out', mie)
                     
                     mie = np.loadtxt('mietest.out') ## data for some object properties
-                    ax1.plot(angles[:nvals, 1]-180, mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
-                    ax1.plot(angles[nvals:, 0]-90, mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
+                    ax1.plot(angles[:nvals, 0], mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
+                    ax1.plot(angles[nvals:, 0], mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
                     plt.title(f'Scattered E-field Intensity Comparison ($\lambda/h=${lambdat/meshData.h:.1f})')
                     ax1.legend()
                     #ax1.set_yscale('log')
                     ax1.grid(True)
                     plt.savefig(self.dataFolder+self.name+'miecomp.png')
-                    intenss = np.abs(farfields[0,:,0])**2 + np.abs(farfields[0,:,1])**2
-                    print(np.abs( (intenss[int(360/4)] - mie[int(360/4)])) / np.abs(mie[int(360/4)]))
-                    print(intenss[int(360/4)], mie[int(360/4)])
                     if(showPlots):
                         plt.show()
                     plt.clf()
@@ -871,3 +735,165 @@ class Scatt3DProblem():
             return farfields
         else: ## return nan for non-main processes, just in case
             return np.nan
+        
+    def calcNearField(self, reference=True, direction = 'forward'):
+        '''
+        Computes + plots the near-field along a line, using interpolation. Compares to miepython's e_near, which is untested. Should still be similar (for farfield test case)
+        :param reference: Whether this is being computed for the DUT case or the reference
+        :param direction: 'forward' for on-axis (z) scattering, 'side' for sideways (y) scattering
+        '''
+        if( (self.verbosity > 1 and self.comm.rank == self.model_rank)):
+                print(f'Calculating near-field values...')
+                sys.stdout.flush()
+        if(reference):
+            meshData = self.refMeshdata
+            sols = self.solutions_ref
+        else:
+            meshData = self.DUTMeshdata
+            sols = self.solutions_dut
+
+        ## also compare internal electric fields inside the sphere, at distances rs
+        fig1 = plt.figure()
+        ax1 = plt.subplot(1, 1, 1)
+        ax1.grid(True)
+        fig2 = plt.figure()
+        ax2 = plt.subplot(1, 1, 1)
+        ax2.grid(True)
+        fig3 = plt.figure()
+        ax3 = plt.subplot(1, 1, 1)
+        ax3.grid(True)
+        numpts = 2001
+        rs = np.linspace(0, meshData.object_radius*3, numpts)
+        negrs = np.linspace(meshData.object_radius*-3, 0, numpts)
+        enears = np.zeros((np.size(rs), 3), dtype=complex)
+        enearsbw = np.zeros((np.size(rs), 3), dtype=complex) ## backward (I think)
+        
+        ### find the simulated values for those radii, at some angle
+        points = np.zeros((3, numpts*2))
+        if(direction == 'forward'):
+            points[2] = np.hstack((negrs, rs)) ## this should be the forward scattering
+        elif(direction == 'side'):
+            points[1] = np.hstack((negrs, rs)) ## this should be the side-scattering (y-axis)
+        bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
+        cells = []
+        points_on_proc = [] ## points on this processor
+        cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, points.T) # Find cells whose bounding-box collide with the the points
+        colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, points.T) # Choose one of the cells that contains the point
+        for i, point in enumerate(points.T):
+            if len(colliding_cells.links(i)) > 0:
+                points_on_proc.append(point)
+                cells.append(colliding_cells.links(i)[0])
+        ###############
+        ############### interpolating
+        Ex = dolfinx.fem.Function(self.ScalarSpace)
+        Ey = dolfinx.fem.Function(self.ScalarSpace)
+        Ez = dolfinx.fem.Function(self.ScalarSpace)
+        def q_abs(x, Es, pol = 'z'): ## similar to the one in makeOptVectors
+            cells = []
+            cell_candidates = dolfinx.geometry.compute_collisions_points(bb_tree, x.T)
+            colliding_cells = dolfinx.geometry.compute_colliding_cells(meshData.mesh, cell_candidates, x.T)
+            for i, point in enumerate(x.T):
+                if len(colliding_cells.links(i)) > 0:
+                    cells.append(colliding_cells.links(i)[0])
+            if(pol == 'z'): ## it is not simple to save the vector itself for some reason...
+                E_vals = Es.eval(x.T, cells)[:, 2]
+            elif(pol == 'x'):
+                E_vals = Es.eval(x.T, cells)[:, 0]
+            elif(pol == 'y'):
+                E_vals = Es.eval(x.T, cells)[:, 1]
+            else:
+                E_vals = Es.eval(x.T, cells)
+            return E_vals
+        sol = sols[0][0] ## fields for the first frequency
+        Ex.interpolate(functools.partial(q_abs, Es=sol, pol='x'))
+        Ey.interpolate(functools.partial(q_abs, Es=sol, pol='y'))
+        Ez.interpolate(functools.partial(q_abs, Es=sol, pol='z'))
+        ###############
+        ###############
+        E_values2 = self.solutions_ref[0][0].eval(points_on_proc, cells) ## less/non-interpolated
+        E_values = np.hstack((Ex.eval(points_on_proc, cells), Ey.eval(points_on_proc, cells), Ez.eval(points_on_proc, cells)))
+        import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+        import miepython.field
+        m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+        freq = self.fvec[0]
+        lambdat = c0/freq
+        k = 2*pi/lambdat
+        x = k*meshData.object_radius
+        coefs = miepython.core.coefficients(m, x, internal=True)
+        def planeWaveSph(x):
+            '''
+            Plane wave to be subtracted from miepython, so only the scattered field is left. Converts to r-, theta-, phi- pols
+            :param x: some given position you want to find the field on
+            :param k: wavenumber
+            '''
+            if(direction == 'forward'): ## along the z-axis
+                E_pw = np.array([self.PW_pol[2], self.PW_pol[0], self.PW_pol[1]])
+            elif(direction == 'side'): ## along x
+                E_pw = np.array([self.PW_pol[0], self.PW_pol[1], self.PW_pol[2]])
+            k_pw = k*self.PW_dir ## z-directed
+            E_pw = E_pw*np.exp(-1j*np.dot(k_pw, x))
+            return E_pw
+        
+        for q in range(len(rs)):
+            r = rs[q]
+            nr = -1*negrs[q] ## still positive, just in other direction due to angle
+            if(np.abs(r)<meshData.object_radius): ## miepython seems to include the incident field inside the sphere
+                t = 0
+            else:
+                t = 0
+            if(np.abs(nr)<meshData.object_radius): ## miepython seems to include the incident field inside the sphere
+                t2 = 0
+            else:
+                t2 = 0
+            if(direction == 'forward'):
+                enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi, pi/2) - t*planeWaveSph(points[:, q])
+                enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, 0, pi/2) - t2*planeWaveSph(points[:, q+numpts])
+            elif(direction == 'side'):
+                enears[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, r, pi/2, pi/2) - t*planeWaveSph(points[:, q])
+                enearsbw[q] = miepython.field.e_near(coefs, 2*pi/k, 2*meshData.object_radius, m, nr, -pi/2, pi/2) - t2*planeWaveSph(points[:, q+numpts])
+                
+        enears = np.vstack((enearsbw, enears))
+        ## plot components
+        ax1.plot(np.hstack((negrs, rs)), np.abs(enears[:, 0]), label='r-comp. miepython', linestyle = ':', color = 'red')
+        ax1.plot(np.hstack((negrs, rs)), np.abs(enears[:, 1]), label='theta-comp. miepython', linestyle = ':', color = 'blue')
+        ax1.plot(np.hstack((negrs, rs)), np.abs(enears[:, 2]), label='phi-comp. miepython', linestyle = ':', color = 'green')
+        ax1.plot(np.hstack((negrs, rs)), np.abs(E_values[:, 0]), label='x-comp.', color = 'red')
+        ax1.plot(np.hstack((negrs, rs)), np.abs(E_values[:, 1]), label='y-comp.', color = 'blue')
+        ax1.plot(np.hstack((negrs, rs)), np.abs(E_values[:, 2]), label='z-comp.', color = 'green')
+        ## plot magnitudes
+        ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
+        #ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
+        ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
+        ## plot real/imags
+        ax3.plot(np.hstack((negrs, rs)), np.real(E_values[:, 0]), label='sim., x-pol real')
+        ax3.plot(np.hstack((negrs, rs)), np.imag(E_values[:, 0]), label='sim., x-pol imag.')
+        if(direction == 'forward'):
+            ax3.plot(np.hstack((negrs, rs)), np.real(enears[:, 1]), label='miepython, theta-pol real', linestyle = ':')
+            ax3.plot(np.hstack((negrs, rs)), np.imag(enears[:, 1]), label='miepython, theta-pol imag.', linestyle = ':')
+        elif(direction == 'side'):
+            ax3.plot(np.hstack((negrs, rs)), np.real(enears[:, 2]), label='miepython, phi-pol real', linestyle = ':')
+            ax3.plot(np.hstack((negrs, rs)), np.imag(enears[:, 2]), label='miepython, phi-pol imag.', linestyle = ':')
+
+        ax1.legend()
+        ax2.legend()
+        ax3.legend()
+        ax1.set_xlabel('Radius [m]')
+        ax2.set_xlabel('Radius [m]')
+        ax3.set_xlabel('Radius [m]')
+        ax1.set_ylabel('E-field Components')
+        ax2.set_ylabel('E-field Magnitude')
+        ax3.set_ylabel('E-field Components')
+        ax1.set_title('Absolute values of components')
+        ax2.set_title('E-field magnitudes')
+        ax3.set_title('Real/imag. parts of incident pol.')
+        
+        ax1.axvline(meshData.object_radius, label = 'radius', color = 'black')
+        ax1.axvline(-1*meshData.object_radius, color = 'black')
+        ax2.axvline(meshData.object_radius, label = 'radius', color = 'black')
+        ax2.axvline(-1*meshData.object_radius, color = 'black')
+        ax3.axvline(meshData.object_radius, label = 'radius', color = 'black')
+        ax3.axvline(-1*meshData.object_radius, color = 'black')
+        fig1.tight_layout()
+        fig2.tight_layout()
+        fig3.tight_layout()
+        plt.show()
