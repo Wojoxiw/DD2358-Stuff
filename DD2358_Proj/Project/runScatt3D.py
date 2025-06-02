@@ -68,8 +68,7 @@ if __name__ == '__main__':
     if(verbosity>2):
         print(f"{comm.rank=} {comm.size=}, {MPI.COMM_SELF.rank=} {MPI.COMM_SELF.size=}, {MPI.Get_processor_name()=}")
     if(comm.rank == model_rank):
-        print('Expected number of MPI processes:', MPInum)
-        print('Scatt3D start:')
+        print(f'runScatt3D starting with {MPInum} MPI process(es):')
     sys.stdout.flush()
     
     def profilingMemsTimes(): ## as used to make plots for the report
@@ -110,24 +109,38 @@ if __name__ == '__main__':
         prevRuns.memTimeAppend(prob)
         postProcessing.testSVD(prob.dataFolder+prob.name)
         
-    def testFarField(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
+    def testSphereScattering(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
-        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
+        #prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', freqs = freqs, material_epsr=2.0, fem_degree=fem_degree)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
-        prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots, returnConvergenceVals=False)
         if(showPlots):
             prob.calcNearField(direction='side')
+        prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots, returnConvergenceVals=False)
         prevRuns.memTimeAppend(prob)
+    
+    def testOmegaFactor(h = 1/12): # Varies omega in the sor preconditioner, plots the time a computation takes. Uses the sphere-scattering test case
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
+        omegas = np.linspace(0+1e-5, 2-1e-5, 1000)
+        ts = np.zeros_like(omegas)
+        for i in range(len(omegas)):
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0, sor_omega = omegas[i], fem_degree=2)
+            ts[i] = prob.calcTime
+        plt.plot(omegas, ts)
+        plt.grid()
+        plt.title('Solver Time by Setting (fem_degree=2)')
+        plt.xlabel(r'$\omega$ (pc_sor_omega)')
+        plt.ylabel('Time [s]')
+        plt.show()
         
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
             ks = np.linspace(4, 40, 22)
         elif(convergence == 'pmlR0'): ## result of this is that the value must be below 1e-2, from there further reduction matches the forward-scattering better, the back-scattering less
-            ks = np.linspace(0, 25, 3)
+            ks = np.linspace(0, 25, 10)
             ks = 10**(-ks)
         elif(convergence == 'dxquaddeg'): ## Result of this showed a large increase in time near the end, and an accuracy improvement for increasing from 2 to 3. Not sending any value causes a huge memory cost/error (process gets killed).
             ks = np.arange(1, 20)
@@ -135,7 +148,6 @@ if __name__ == '__main__':
         areaVals = [] ## vals returned from the calculations
         FFrmsRelErrs = np.zeros(len(ks)) ## for the farfields
         FFrmsveryRelErrs = np.zeros(len(ks))
-        FFrmsAbsErrs = np.zeros(len(ks))
         FFmaxRelErrs = np.zeros(len(ks))
         FFforwardrelErr = np.zeros(len(ks))
         khatRmsErrs = np.zeros(len(ks))
@@ -161,8 +173,7 @@ if __name__ == '__main__':
                 FFrelativeErrors = np.abs( (intenss - mies) ) / np.abs( mies )
                 FFrmsRelErrs[i] = np.sqrt(np.sum(FFrelativeErrors**2)/np.size(FFrelativeErrors))
                 FFvrelativeErrors = np.abs( (intenss - mies) ) / np.max(np.abs(mies)) ## relative to the max. mie intensity, to make it even more relative
-                FFrmsveryRelErrs[i] = np.sqrt(np.sum(FFvrelativeErrors**2)/np.size(FFvrelativeErrors))
-                FFrmsAbsErrs[i] = np.sqrt(np.sum(np.abs(intenss - mies)**2)/np.size(intenss))
+                FFrmsveryRelErrs[i] = np.sqrt(np.sum(FFvrelativeErrors**2)/np.size(FFvrelativeErrors)) ## absolute error, scaled by the max. mie value
                 FFmaxRelErrs[i] = np.max(FFrelativeErrors)
                 FFforwardrelErr[i] = np.abs( (intenss[int(360/4)] - mies[int(360/4)])) / np.abs(mies[int(360/4)])
                 if(verbosity>1):
@@ -187,7 +198,6 @@ if __name__ == '__main__':
             ax1.plot(ks, khatMaxErrs, marker='o', linestyle='--', label = r'khat integral - max. abs. error')
             ax1.plot(ks, khatRmsErrs, marker='o', linestyle='--', label = r'khat integral - RMS error')
             ax1.plot(ks, FFrmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
-            ax1.plot(ks, FFrmsAbsErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS abs. error')
             ax1.plot(ks, FFrmsveryRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS. veryrel. error')
             ax1.plot(ks, FFforwardrelErr, marker='o', linestyle='--', label = r'Farfield forward rel. error')
             
@@ -201,21 +211,22 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testFarField(h=1/10, fem_degree=1, showPlots=True)
+    testSphereScattering(h=1/4, fem_degree=1, showPlots=False)
     #convergenceTestPlots('pmlR0')
-    convergenceTestPlots('meshsize')
+    #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
+    #testOmegaFactor(h=1/14)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
     #     runName = 'test-fem3h'+str(k)
-    #     testFarField(h=1/k)
+    #     testSphereScattering(h=1/k)
     #===========================================================================
     
     #===========================================================================
     # for k in range(15, 40, 2):
     #     runName = 'testRunbiggerdomainfaraway(10hawayFF)FF'+str(k)
-    #     testFarField(h=1/k)
+    #     testSphereScattering(h=1/k)
     #===========================================================================
     
     #filename = 'prevRuns.npz'

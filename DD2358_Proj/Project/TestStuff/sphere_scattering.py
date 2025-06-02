@@ -1,6 +1,6 @@
 # Simulate EM scattering of a sphere and compare to Mie solution.
 #
-# Daniel Sjöberg, 2025-05-14
+# Daniel Sjöberg, 2025-05-21
 
 from mpi4py import MPI
 import numpy as np
@@ -8,8 +8,14 @@ import dolfinx, dolfinx.fem.petsc
 import ufl, basix
 import sys
 import gmsh
-from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 from matplotlib import pyplot as plt
+
+# Scipy not installed in my lunarc account, define constants explicitly
+#from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
+c0 = 299792458.0
+mu0 = 4*np.pi*1e-7
+eps0 = 1/c0**2/mu0
+pi = np.pi
 eta0 = np.sqrt(mu0/eps0)
 
 
@@ -271,13 +277,13 @@ if __name__ == '__main__':
     comm = MPI.COMM_WORLD
     model_rank = 0
 
-    epsr = 3.5 - 0j
+    epsr = 2 - 0j
+    a = 1e-2
     f0 = 10e9
     lambda0 = c0/f0
-    a = lambda0*.45
     fem_degree = 1
-    #hfactors = np.array([10, 20, 30, 40], dtype=float)
-    hfactors = np.array([12], dtype=float)
+    hfactors = np.array([10, 20, 30, 40], dtype=float)
+    hfactors = np.array([5, 10], dtype=float) # Quick choices for testing
 
     for hfactor in hfactors:
         h = lambda0/hfactor
@@ -294,7 +300,8 @@ if __name__ == '__main__':
             print(f'Rank {comm.rank}: Computing far field')
             sys.stdout.flush()
 
-        cut = np.linspace(-180, 180.0, 181)
+        # Compute far fields
+        cut = np.linspace(-180, 180.0, 3)
         Eplane_angles = []
         Hplane_angles = []
         for angle in cut:
@@ -309,10 +316,62 @@ if __name__ == '__main__':
         ff_Eplane = p.ComputeFarField(Eplane_angles)
         ff_Hplane = p.ComputeFarField(Hplane_angles)
 
+        # Compute near fields
+        Np = 100
+        line = np.linspace(-a-0.2*lambda0, a+0.2*lambda0, Np)
+        points = np.zeros((3, Np))
+        points[1] = line
+        E_values = []
+
+        # Interpolate the fields from Nedelec space to DG1 (to preserve discontinuities)
+        InterpSpace = dolfinx.fem.functionspace(p.mesh, ('Discontinuous Lagrange', 1, (3,)))
+        Ei = dolfinx.fem.Function(InterpSpace)
+        Ei.interpolate(p.Eh)
+                                                
+        from dolfinx import geometry
+        bb_tree = geometry.bb_tree(p.mesh, p.mesh.topology.dim)
+        cells = []
+        points_on_proc = []
+        # Find cells whose bounding-box collide with the the points
+        cell_candidates = geometry.compute_collisions_points(bb_tree, points.T)
+        # Choose one of the cells that contains the point
+        colliding_cells = geometry.compute_colliding_cells(p.mesh, cell_candidates, points.T)
+        for i, point in enumerate(points.T):
+            if len(colliding_cells.links(i)) > 0:
+                points_on_proc.append(point)
+                cells.append(colliding_cells.links(i)[0])
+
+        points_on_proc = np.array(points_on_proc, dtype=np.float64)
+        # Introduce some interpolation from edge based to node base (DG1) here
+        E_values = p.Eh.eval(points_on_proc, cells)
+        if len(points_on_proc) == 1: # For only one point, results of eval need to be encapsulated in an array
+            E_values = np.array([E_values])
+        points_on_proc_all = comm.gather(points_on_proc, root=model_rank)
+        E_values_all = comm.gather(E_values, root=model_rank)
         if comm.rank == model_rank:
-            data = np.vstack([cut, ff_Eplane[:,0], ff_Eplane[:,1], ff_Hplane[:,0], ff_Hplane[:,1]]).T
-            np.savetxt(f'sim_{lambda0/h}.dat', data, delimiter=',', header="""# Angle (deg), theta pol E-plane, phi pol E-plane, theta pol H-plane, phi pol H-plane""")
+            # There should be a more pretty way to sum up these things
+            points_vec = []
+            E_values_vec = []
+            for x, E in zip(points_on_proc_all, E_values_all):
+                if x.size > 0:
+                    points_vec = points_vec + x.tolist()
+                    E_values_vec = E_values_vec + E.tolist()
+            points_vec = np.array(points_vec)
+            E_values_vec = np.array(E_values_vec)            
+            idx = np.argsort(points_vec[:,1])
+            points_vec = points_vec[idx]
+            E_values_vec = E_values_vec[idx]
+        else:
+            points_vec = None
+            E_values_vec = None
+            
+        # Save data
+        if comm.rank == model_rank:
+            ffdata = np.vstack([cut, ff_Eplane[:,0], ff_Eplane[:,1], ff_Hplane[:,0], ff_Hplane[:,1]]).T
+            np.savetxt(f'ffdata_{lambda0/h}.dat', ffdata, delimiter=',', header="""# Angle (deg), theta pol E-plane, phi pol E-plane, theta pol H-plane, phi pol H-plane""")
             # Read file with np.genfromtxt(filename, dtype=None, delimiter=',', skip_header=1)
+            nfdata = np.hstack([points_vec, E_values_vec])
+            np.savetxt(f'nfdata_{lambda0/h}.dat', nfdata, delimiter=',', header="""# x, y, z, Ex, Ey, Ez""")
 
     exit()
 

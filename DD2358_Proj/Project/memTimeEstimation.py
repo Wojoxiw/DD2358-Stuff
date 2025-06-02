@@ -52,7 +52,7 @@ class runTimesMems():
             :param mem: Total memory used in the problem
             '''
             self.meshingTime = prob.refMeshdata.meshingTime
-            self.calcTime = prob.calcTimes
+            self.calcTime = prob.calcTime
             self.MPInum = prob.MPInum
             self.Nf = prob.Nf # number of frequencies - computations are for each frequency
             self.Nants = prob.refMeshdata.N_antennas # number of antennas - computations are for each antenna pair
@@ -98,7 +98,7 @@ class runTimesMems():
             self.sizes = np.zeros(numRuns)
             self.mems = np.zeros(numRuns)
             self.times = np.zeros(numRuns)
-            self.calcTimes = np.zeros(numRuns)
+            self.calcTime = np.zeros(numRuns)
             self.numProcesses = np.zeros(numRuns)
             self.Nfs = np.zeros(numRuns)
             self.Nants = np.zeros(numRuns)
@@ -108,7 +108,7 @@ class runTimesMems():
                 self.sizes[i] = run.size
                 self.mems[i] = run.mem
                 self.times[i] = run.meshingTime + run.calcTime
-                self.calcTimes[i] = run.calcTime
+                self.calcTime[i] = run.calcTime
                 self.numProcesses[i] = run.MPInum
                 self.Nfs[i] = run.Nf
                 self.Nants[i] = run.Nants

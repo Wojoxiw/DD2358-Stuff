@@ -12,6 +12,7 @@ from memory_profiler import memory_usage
 import gmsh
 import sys
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
+from petsc4py import PETSc
 import memTimeEstimation
 from matplotlib import pyplot as plt
 from matplotlib.collections import _MeshData
@@ -63,6 +64,7 @@ class Scatt3DProblem():
                  computeBoth = False, ## if True and computeImmediately is True, computes both ref and dut cases.
                  PML_R0 = 1e-11, ## 'intended damping for reflections from the PML', or something similar...
                  quaddeg = 5, ## quadrature degree for dx, default to 5 to avoid slowdown with pml if it defaults to higher?
+                 sor_omega = .8, ## omega for the sor preconditioner
                  ):
         """Initialize the problem."""
         
@@ -91,6 +93,7 @@ class Scatt3DProblem():
             
         self.PML_R0 = PML_R0
         self.dxquaddeg = quaddeg
+        self.sor_omega = sor_omega
             
         self.epsr_bkg = epsr_bkg
         self.mur_bkg = mur_bkg
@@ -141,7 +144,7 @@ class Scatt3DProblem():
         self.CalculatePML(meshData, self.k0) ## this is recalculated for each frequency, in ComputeSolutions - run it here just to initialize variables (not sure if needed)
         mem_usage = memory_usage((self.ComputeSolutions, (meshData,), {'computeRef':computeRef,}), max_usage = True)/1000 ## track the memory usage here
         #self.ComputeSolutions(meshData, computeRef=True)
-        self.calcTimes = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
+        self.calcTime = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
         if(makeOptVects):
             self.makeOptVectors(meshData)
         
@@ -152,7 +155,7 @@ class Scatt3DProblem():
             self.memCost = sum(mems) ## keep the total usage. Only the master rank should be used, so this should be fine
             if(self.verbosity>0):
                 print(f'Total memory: {self.memCost:.3f} GiB ({mem_usage*self.MPInum:.3f} GiB for this process, MPInum={self.MPInum} times)')
-                print(f'Computations for {self.name} completed in {self.calcTimes:.2e} s ({self.calcTimes/3600:.2e} hours)')
+                print(f'Computations for {self.name} completed in {self.calcTime:.2e} s ({self.calcTime/3600:.2e} hours)')
         sys.stdout.flush()
                 
                 
@@ -160,7 +163,7 @@ class Scatt3DProblem():
         # Set up some FEM function spaces and boundary condition stuff.
         curl_element = basix.ufl.element('N1curl', meshData.mesh.basix_cell(), self.fem_degree)
         self.Vspace = dolfinx.fem.functionspace(meshData.mesh, curl_element)
-        self.ScalarSpace = dolfinx.fem.functionspace(meshData.mesh, ('CG', self.fem_degree))
+        self.ScalarSpace = dolfinx.fem.functionspace(meshData.mesh, ('CG', 1)) ## this is just used for plotting+post-computations, so use degree... 1?
         self.Wspace = dolfinx.fem.functionspace(meshData.mesh, ("DG", 0))
         # Create measures for subdomains and surfaces
         self.dx = ufl.Measure('dx', domain=meshData.mesh, subdomain_data=meshData.subdomains, metadata={'quadrature_degree': self.dxquaddeg})
@@ -342,10 +345,12 @@ class Scatt3DProblem():
             - ufl.inner(k00**2*(self.epsr - 1/self.mur*self.mur_bkg*self.epsr_bkg)*Eb, v)*self.dx_dom + eval(F_antennas_str) ## background field and antenna terms
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
-        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"}
-        petsc_options={"ksp_type": "gmres", "ksp_rtol": 1e-9, "ksp_atol": 1e-13, "ksp_max_it": 3000, "pc_type": "none"}
-        problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
+        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
+        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "sor", "pc_sor_omega": self.sor_omega} ## (https://petsc.org/release/manual/ksp/)
+        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "gamg", "mg_levels_ksp_type" : "chebyshev", "mg_levels_pc_type": "jacobi", "mg_levels_ksp_chebyshev_esteig_steps" : 10}
         
+        problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
+
         def ComputeFields():
             '''
             Computes the fields. There are two cases: one with antennas, and one without (PW excitation)
@@ -407,6 +412,18 @@ class Scatt3DProblem():
             
             self.epsr.x.array[:] = self.epsr_array_dut
             self.S_dut, self.solutions_dut = ComputeFields()
+            
+            
+        if( (self.verbosity > 0 and self.comm.rank == self.model_rank)): ## print solver info
+            solver = problem.solver
+            fname=self.dataFolder+self.name+"solver_output.txt"
+            viewer = PETSc.Viewer().createASCII(fname)
+            solver.view(viewer)
+            print(f'Converged for reason: {solver.reason}, after {solver.its} iterations. Norm: {solver.norm}') ## if reason is negative, it diverged (see https://petsc.org/release/manualpages/KSP/KSPConvergedReason/)
+            if(self.verbosity > 3):
+                solver_output = open(fname, "r") ## this prints to console
+                for line in solver_output.readlines():
+                    print(line)
             
     #@profile
     def makeOptVectors(self, meshData):
@@ -647,20 +664,19 @@ class Scatt3DProblem():
                 if(self.verbosity>2):
                     print(f'khat calc first angle (should be zero): {np.abs(khatResults[0]):.5e}')
                     print(f'Farfield-surface area, calculated vs real (expected): {np.abs(areaResult)} vs {real_area}. Error: {np.abs(areaResult-real_area):.3e}, rel. error: {np.abs((areaResult-real_area)/real_area):.3e}')
-                          
-                #===============================================================
-                # import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                # m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                # mies = np.zeros_like(angles[:, 1])
-                # lambdat = c0/freq
-                # x = 2*pi*meshData.object_radius/lambdat
-                # for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-                #     if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
-                #         mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
-                #     else: ## if not, we are changing theta angles and in the parallel plane
-                #         mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
-                # np.savetxt('miestest.out', mies)
-                #===============================================================
+                      
+                if(self.MPInum == 1): ## Presumably clsuter runs should have MPInum > 1    
+                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    mies = np.zeros_like(angles[:, 1])
+                    lambdat = c0/freq
+                    x = 2*pi*meshData.object_radius/lambdat
+                    for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                        if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
+                            mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                        else: ## if not, we are changing theta angles and in the parallel plane
+                            mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+                    np.savetxt('miestest.out', mies)
                 
                 mies = np.loadtxt('miestest.out') ## data for certain object properties
                 vals = areaResult, khatResults, farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
@@ -684,17 +700,18 @@ class Scatt3DProblem():
                     ax1.plot(angles[nvals:, 0], mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
                     
                     ##Calculate Mie scattering
-                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                    mie = np.zeros_like(angles[:, 1])
-                    lambdat = c0/freq
-                    x = 2*pi*meshData.object_radius/lambdat
-                    for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-                        if(angles[i, 1] == 90): ## if theta=90, then this is H-plane/perpendicular
-                            mie[i] = miepython.i_per(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
-                        else: ## if not, we are changing theta angles and in the parallel plane
-                            mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
-                    np.savetxt('mietest.out', mie)
+                    if(self.MPInum == 1): ## Presumably clsuter runs should have MPInum > 1
+                        import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
+                        m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                        mie = np.zeros_like(angles[:, 1])
+                        lambdat = c0/freq
+                        x = 2*pi*meshData.object_radius/lambdat
+                        for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                            if(angles[i, 1] == 90): ## if theta=90, then this is H-plane/perpendicular
+                                mie[i] = miepython.i_per(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                            else: ## if not, we are changing theta angles and in the parallel plane
+                                mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+                        np.savetxt('mietest.out', mie)
                     
                     mie = np.loadtxt('mietest.out') ## data for some object properties
                     ax1.plot(angles[:nvals, 0], mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
@@ -862,8 +879,8 @@ class Scatt3DProblem():
         ax1.plot(np.hstack((negrs, rs)), np.abs(E_values[:, 2]), label='z-comp.', color = 'green')
         ## plot magnitudes
         ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
-        #ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
-        ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
+        ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
+        #ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
         ## plot real/imags
         ax3.plot(np.hstack((negrs, rs)), np.real(E_values[:, 0]), label='sim., x-pol real')
         ax3.plot(np.hstack((negrs, rs)), np.imag(E_values[:, 0]), label='sim., x-pol imag.')
@@ -896,4 +913,4 @@ class Scatt3DProblem():
         fig1.tight_layout()
         fig2.tight_layout()
         fig3.tight_layout()
-        plt.show()
+        #plt.show()
