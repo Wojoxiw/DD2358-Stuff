@@ -1,0 +1,20 @@
+KSP Object: (dolfinx_solve_129363831567568) 8 MPI processes
+  type: lgmres
+    restart=30, using Classical (unmodified) Gram-Schmidt Orthogonalization with no iterative refinement
+    happy breakdown tolerance 1e-30
+    aug. dimension=2
+    number of matvecs=1486
+  maximum iterations=10000, initial guess is zero
+  tolerances: relative=0.001, absolute=1e-06, divergence=10000.
+  left preconditioning
+  using PRECONDITIONED norm type for convergence test
+PC Object: (dolfinx_solve_129363831567568) 8 MPI processes
+  type: sor
+    type = local_symmetric, iterations = 1, local iterations = 1, omega = 0.8
+  linear system matrix = precond matrix:
+  Mat Object: (dolfinx_solve_129363831567568) 8 MPI processes
+    type: mpiaij
+    rows=186692, cols=186692
+    total: nonzeros=2980430, allocated nonzeros=2980430
+    total number of mallocs used during MatSetValues calls=0
+      not using I-node (on process 0) routines

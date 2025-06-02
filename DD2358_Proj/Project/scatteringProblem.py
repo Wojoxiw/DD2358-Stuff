@@ -345,8 +345,8 @@ class Scatt3DProblem():
             - ufl.inner(k00**2*(self.epsr - 1/self.mur*self.mur_bkg*self.epsr_bkg)*Eb, v)*self.dx_dom + eval(F_antennas_str) ## background field and antenna terms
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
-        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
-        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "sor", "pc_sor_omega": self.sor_omega} ## (https://petsc.org/release/manual/ksp/)
+        #petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
+        petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "sor", "pc_sor_omega": self.sor_omega} ## (https://petsc.org/release/manual/ksp/)
         #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "gamg", "mg_levels_ksp_type" : "chebyshev", "mg_levels_pc_type": "jacobi", "mg_levels_ksp_chebyshev_esteig_steps" : 10}
         
         problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
@@ -361,17 +361,17 @@ class Scatt3DProblem():
             for nf in range(self.Nf):
                 if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
                     print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
-                    sys.stdout.flush()
+                sys.stdout.flush()
                 k0 = 2*np.pi*self.fvec[nf]/c0
                 k00.value = k0
                 Zrel.value = k00.value/np.sqrt(k00.value**2 - meshData.kc**2)
                 self.CalculatePML(meshData, k0)  ## update PML to this freq.
-                
                 Eb.interpolate(functools.partial(planeWave, k=k0))
                 sols = []
                 if(meshData.N_antennas == 0): ## if no antennas:
                     E_h = problem.solve()
                     sols.append(E_h.copy())
+                    sys.stdout.flush()
                 else:
                     for n in range(meshData.N_antennas):
                         for m in range(meshData.N_antennas):
@@ -402,23 +402,20 @@ class Scatt3DProblem():
             if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
                 print(f'Rank {self.comm.rank}: Computing REF solutions')
             sys.stdout.flush()
-                
             self.epsr.x.array[:] = self.epsr_array_ref
             self.S_ref, self.solutions_ref = ComputeFields()    
         else:
             if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
                 print(f'Rank {self.comm.rank}: Computing DUT solutions')
             sys.stdout.flush()
-            
             self.epsr.x.array[:] = self.epsr_array_dut
             self.S_dut, self.solutions_dut = ComputeFields()
             
-            
+        solver = problem.solver
+        fname=self.dataFolder+self.name+"solver_output.txt"
+        viewer = PETSc.Viewer().createASCII(fname)
+        solver.view(viewer)
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank)): ## print solver info
-            solver = problem.solver
-            fname=self.dataFolder+self.name+"solver_output.txt"
-            viewer = PETSc.Viewer().createASCII(fname)
-            solver.view(viewer)
             print(f'Converged for reason: {solver.reason}, after {solver.its} iterations. Norm: {solver.norm}') ## if reason is negative, it diverged (see https://petsc.org/release/manualpages/KSP/KSPConvergedReason/)
             if(self.verbosity > 3):
                 solver_output = open(fname, "r") ## this prints to console
@@ -700,11 +697,11 @@ class Scatt3DProblem():
                     ax1.plot(angles[nvals:, 0], mag[nvals:], label = 'Integrated (E-plane)', linewidth = 1.2, color = 'red', linestyle = '-') ## -90 so 0 is the forward direction
                     
                     ##Calculate Mie scattering
+                    lambdat = c0/freq
                     if(self.MPInum == 1): ## Presumably clsuter runs should have MPInum > 1
                         import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
                         m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
                         mie = np.zeros_like(angles[:, 1])
-                        lambdat = c0/freq
                         x = 2*pi*meshData.object_radius/lambdat
                         for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
                             if(angles[i, 1] == 90): ## if theta=90, then this is H-plane/perpendicular

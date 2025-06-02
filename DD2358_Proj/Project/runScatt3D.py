@@ -112,7 +112,7 @@ if __name__ == '__main__':
     def testSphereScattering(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
-        #prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
+        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', freqs = freqs, material_epsr=2.0, fem_degree=fem_degree)
         #prob.saveDofsView(prob.refMeshdata)
@@ -120,7 +120,7 @@ if __name__ == '__main__':
         if(showPlots):
             prob.calcNearField(direction='side')
         prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots, returnConvergenceVals=False)
-        prevRuns.memTimeAppend(prob)
+        #prevRuns.memTimeAppend(prob)
     
     def testOmegaFactor(h = 1/12): # Varies omega in the sor preconditioner, plots the time a computation takes. Uses the sphere-scattering test case
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
@@ -211,7 +211,7 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    testSphereScattering(h=1/4, fem_degree=1, showPlots=False)
+    testSphereScattering(h=1/14, fem_degree=1, showPlots=False)
     #convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
