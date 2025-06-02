@@ -205,15 +205,15 @@ if __name__ == '__main__':
             ax1.legend()
             fig1.tight_layout()
             plt.savefig(prob.dataFolder+prob.name+convergence+'convergence.png')
-            plt.show()
+            #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    testSphereScattering(h=1/14, fem_degree=1, showPlots=False)
+    #testSphereScattering(h=1/4, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
-    #convergenceTestPlots('meshsize')
+    convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
     #testOmegaFactor(h=1/14)
     

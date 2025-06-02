@@ -346,8 +346,8 @@ class Scatt3DProblem():
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
         #petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
-        petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "sor", "pc_sor_omega": self.sor_omega} ## (https://petsc.org/release/manual/ksp/)
-        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "gamg", "mg_levels_ksp_type" : "chebyshev", "mg_levels_pc_type": "jacobi", "mg_levels_ksp_chebyshev_esteig_steps" : 10}
+        petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "jacobi", "pc_sor_omega": self.sor_omega} ## (https://petsc.org/release/manual/ksp/)
+        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "gamg", "mg_levels_ksp_type" : "chebyshev", "mg_levels_pc_type": "sor", "mg_levels_ksp_chebyshev_esteig_steps" : 10}
         
         problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
 
@@ -777,8 +777,8 @@ class Scatt3DProblem():
         ax3 = plt.subplot(1, 1, 1)
         ax3.grid(True)
         numpts = 2001
-        rs = np.linspace(0, meshData.object_radius*3, numpts)
-        negrs = np.linspace(meshData.object_radius*-3, 0, numpts)
+        rs = np.linspace(0, meshData.PML_radius*.99, numpts)
+        negrs = np.linspace(-1*meshData.PML_radius*.99, 0, numpts)
         enears = np.zeros((np.size(rs), 3), dtype=complex)
         enearsbw = np.zeros((np.size(rs), 3), dtype=complex) ## backward (I think)
         
@@ -907,6 +907,12 @@ class Scatt3DProblem():
         ax2.axvline(-1*meshData.object_radius, color = 'black')
         ax3.axvline(meshData.object_radius, label = 'radius', color = 'black')
         ax3.axvline(-1*meshData.object_radius, color = 'black')
+        ax1.axvline(meshData.domain_radius, label = 'radius', color = 'gray')
+        ax1.axvline(-1*meshData.domain_radius, color = 'gray')
+        ax2.axvline(meshData.domain_radius, label = 'radius', color = 'gray')
+        ax2.axvline(-1*meshData.domain_radius, color = 'gray')
+        ax3.axvline(meshData.domain_radius, label = 'radius', color = 'gray')
+        ax3.axvline(-1*meshData.domain_radius, color = 'gray')
         fig1.tight_layout()
         fig2.tight_layout()
         fig3.tight_layout()
