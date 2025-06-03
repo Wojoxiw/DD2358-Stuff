@@ -59,6 +59,8 @@ class runTimesMems():
             self.size = prob.refMeshdata.ncells # Computation size (number of FEM elements)
             self.mem = prob.memCost # Total memory cost
             self.fem_degree = prob.fem_degree ## Finite element degree
+            self.solve_its = prob.solver_its ## Iterations taken to solve the final problem
+            self.solve_norm = prob.solver_norm ## Norm of found solution
             self.extraInfo = extraInfo
             
     def memTimeAppend(self, run, extraInfo = ''):

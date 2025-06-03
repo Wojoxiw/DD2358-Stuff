@@ -64,7 +64,7 @@ class Scatt3DProblem():
                  computeBoth = False, ## if True and computeImmediately is True, computes both ref and dut cases.
                  PML_R0 = 1e-11, ## 'intended damping for reflections from the PML', or something similar...
                  quaddeg = 5, ## quadrature degree for dx, default to 5 to avoid slowdown with pml if it defaults to higher?
-                 sor_omega = .8, ## omega for the sor preconditioner
+                 solver_settings = {}, ## dictionary of additional solver settings
                  ):
         """Initialize the problem."""
         
@@ -93,7 +93,7 @@ class Scatt3DProblem():
             
         self.PML_R0 = PML_R0
         self.dxquaddeg = quaddeg
-        self.sor_omega = sor_omega
+        self.solver_settings = solver_settings
             
         self.epsr_bkg = epsr_bkg
         self.mur_bkg = mur_bkg
@@ -346,8 +346,8 @@ class Scatt3DProblem():
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
         #petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
-        petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "jacobi", "pc_sor_omega": self.sor_omega} ## (https://petsc.org/release/manual/ksp/)
-        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "gamg", "mg_levels_ksp_type" : "chebyshev", "mg_levels_pc_type": "sor", "mg_levels_ksp_chebyshev_esteig_steps" : 10}
+        petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000,"pc_type": "sor", **self.solver_settings} ## (https://petsc.org/release/manual/ksp/) "pc_sor_omega": 0.8
+        #petsc_options={"ksp_type": "agmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "sor"}
         
         problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
 
@@ -415,8 +415,10 @@ class Scatt3DProblem():
         fname=self.dataFolder+self.name+"solver_output.txt"
         viewer = PETSc.Viewer().createASCII(fname)
         solver.view(viewer)
-        if( (self.verbosity > 0 and self.comm.rank == self.model_rank)): ## print solver info
+        if( (self.verbosity > 0 and self.comm.rank == self.model_rank)): ## print solver info for the final solve - presumably this is representative of all solves
             print(f'Converged for reason: {solver.reason}, after {solver.its} iterations. Norm: {solver.norm}') ## if reason is negative, it diverged (see https://petsc.org/release/manualpages/KSP/KSPConvergedReason/)
+            self.solver_its = solver.its
+            self.solver_norm = solver.norm
             if(self.verbosity > 3):
                 solver_output = open(fname, "r") ## this prints to console
                 for line in solver_output.readlines():

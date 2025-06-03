@@ -121,24 +121,10 @@ if __name__ == '__main__':
             prob.calcNearField(direction='side')
         prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots, returnConvergenceVals=False)
         #prevRuns.memTimeAppend(prob)
-    
-    def testOmegaFactor(h = 1/12): # Varies omega in the sor preconditioner, plots the time a computation takes. Uses the sphere-scattering test case
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
-        omegas = np.linspace(0+1e-5, 2-1e-5, 1000)
-        ts = np.zeros_like(omegas)
-        for i in range(len(omegas)):
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0, sor_omega = omegas[i], fem_degree=2)
-            ts[i] = prob.calcTime
-        plt.plot(omegas, ts)
-        plt.grid()
-        plt.title('Solver Time by Setting (fem_degree=2)')
-        plt.xlabel(r'$\omega$ (pc_sor_omega)')
-        plt.ylabel('Time [s]')
-        plt.show()
-        
+ 
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(4, 40, 22)
+            ks = np.linspace(4, 16, 4)
         elif(convergence == 'pmlR0'): ## result of this is that the value must be below 1e-2, from there further reduction matches the forward-scattering better, the back-scattering less
             ks = np.linspace(0, 25, 10)
             ks = 10**(-ks)
@@ -205,7 +191,52 @@ if __name__ == '__main__':
             ax1.legend()
             fig1.tight_layout()
             plt.savefig(prob.dataFolder+prob.name+convergence+'convergence.png')
-            #plt.show()
+            plt.show()
+            
+    def testSolverSettings(h = 1/12): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
+        omegas = np.linspace(0.01, 1.99, 500)#np.arange(1, 5) ## the setting being varied
+        num = np.size(omegas)
+        ts = np.zeros(num)
+        its = np.zeros(num)
+        norms = np.zeros(num)
+        for i in range(len(omegas)):
+            sets = {"pc_sor_omega" : omegas[i]}
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0, fem_degree=1, solver_settings=sets)
+            ts[i] = prob.calcTime
+            its[i] = prob.solver_its
+            norms[i] = prob.solver_norm
+        fig, ax1 = plt.subplots()
+        fig.subplots_adjust(right=0.75)
+        ax2 = ax1.twinx()
+        ax3 = ax1.twinx()
+        ax3.spines.right.set_position(("axes", 1.2))
+        ax3.set_yscale('log')
+        ax1.grid()
+        
+        l1, = ax1.plot(omegas, its, label = 'Iterations', linewidth = 2, color='tab:red')
+        l2, = ax2.plot(omegas, ts, label = 'Time [s]', linewidth = 2, color='tab:blue')
+        l3, = ax3.plot(omegas, norms, label = 'norms', linewidth = 2, color = 'orange')
+        
+        plt.title(f'Solver Time by Setting (fem_degree=1, h={h:.2f})')
+        ax1.set_xlabel(r'Setting (pc_sor_its)')
+        ax1.set_ylabel('#')
+        ax2.set_ylabel('Time [s]')
+        ax3.set_ylabel('log10(Norms)')
+        
+        ax1.yaxis.label.set_color(l1.get_color())
+        ax2.yaxis.label.set_color(l2.get_color())
+        ax3.yaxis.label.set_color(l3.get_color())
+        tkw = dict(size=4, width=1.5)
+        ax1.tick_params(axis='y', colors=l1.get_color(), **tkw)
+        ax2.tick_params(axis='y', colors=l2.get_color(), **tkw)
+        ax3.tick_params(axis='y', colors=l3.get_color(), **tkw)
+        ax1.tick_params(axis='x', **tkw)
+        ax1.legend(handles=[l1, l2, l3])
+        
+        fig.tight_layout()
+        plt.savefig(prob.dataFolder+prob.name+'pc_sor_its_solversettingsplot.png')
+        #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
@@ -213,9 +244,9 @@ if __name__ == '__main__':
     #testRun2(h=1/10)
     #testSphereScattering(h=1/4, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
-    convergenceTestPlots('meshsize')
+    #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    #testOmegaFactor(h=1/14)
+    testSolverSettings(h=1/8)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
