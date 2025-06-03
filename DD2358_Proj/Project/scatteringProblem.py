@@ -345,8 +345,8 @@ class Scatt3DProblem():
             - ufl.inner(k00**2*(self.epsr - 1/self.mur*self.mur_bkg*self.epsr_bkg)*Eb, v)*self.dx_dom + eval(F_antennas_str) ## background field and antenna terms
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
-        #petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
-        petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000,"pc_type": "sor", **self.solver_settings} ## (https://petsc.org/release/manual/ksp/) "pc_sor_omega": 0.8
+        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
+        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000,"pc_type": "sor", **self.solver_settings} ## (https://petsc.org/release/manual/ksp/) "pc_sor_omega": 0.8
         #petsc_options={"ksp_type": "agmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "sor"}
         
         problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
@@ -371,7 +371,6 @@ class Scatt3DProblem():
                 if(meshData.N_antennas == 0): ## if no antennas:
                     E_h = problem.solve()
                     sols.append(E_h.copy())
-                    sys.stdout.flush()
                 else:
                     for n in range(meshData.N_antennas):
                         for m in range(meshData.N_antennas):
@@ -423,7 +422,7 @@ class Scatt3DProblem():
                 solver_output = open(fname, "r") ## this prints to console
                 for line in solver_output.readlines():
                     print(line)
-            
+           
     #@profile
     def makeOptVectors(self, meshData):
         '''
@@ -518,21 +517,22 @@ class Scatt3DProblem():
             for i, point in enumerate(x.T):
                 if len(colliding_cells.links(i)) > 0:
                     cells.append(colliding_cells.links(i)[0])
-            if(pol == 'z'): ## it is not simple to save the vector itself for some reason...
+            if(pol == 'z-pol'): ## it is not simple to save the vector itself for some reason...
                 E_vals = Es.eval(x.T, cells)[:, 2]
-            elif(pol == 'x'):
+            elif(pol == 'x-pol'):
                 E_vals = Es.eval(x.T, cells)[:, 0]
-            elif(pol == 'y'):
+            elif(pol == 'y-pol'):
                 E_vals = Es.eval(x.T, cells)[:, 1]
             return E_vals
-        pols = ['x', 'y', 'z']
+        pols = ['x-pol', 'y-pol', 'z-pol']
         sol = self.solutions_ref[0][0] ## fields for the first frequency
         pml_cells = meshData.subdomains.find(meshData.pml_marker)
         pml_dofs = dolfinx.fem.locate_dofs_topological(self.ScalarSpace, entity_dim=self.tdim, entities=pml_cells)
+        xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimation.xdmf', file_mode='w')
+        xdmf.write_mesh(meshData.mesh)
         for pol in pols:
-            xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'outputPhaseAnimationE'+pol+'.xdmf', file_mode='w')
             E.interpolate(functools.partial(q_abs, Es=sol, pol=pol))
-            xdmf.write_mesh(meshData.mesh)
+            E.name = pol
             if(removePML):
                 E.x.array[pml_dofs] = 0#np.nan ## use the ScalarSpace one
             for i in range(Nframes):
@@ -540,7 +540,7 @@ class Scatt3DProblem():
                 xdmf.write_function(E, i)
         xdmf.close()
         if(self.verbosity>0 & self.comm.rank == self.model_rank):
-            print(self.name+' E-fields anim')
+            print(self.name+' E-fields animation complete')
         
     def saveDofsView(self, meshData):
         '''
@@ -612,6 +612,7 @@ class Scatt3DProblem():
         eta0 = float(np.sqrt(mu0/eps0)) ## must convert to float first
         
         farfields = np.zeros((self.Nf, numAngles, 2), dtype=complex) ## for each frequency and angle, E_theta and E_phi
+        
         for b in range(self.Nf):
             freq = self.fvec[b]
             k = 2*np.pi*freq/c0
@@ -820,6 +821,7 @@ class Scatt3DProblem():
             else:
                 E_vals = Es.eval(x.T, cells)
             return E_vals
+        
         sol = sols[0][0] ## fields for the first frequency
         Ex.interpolate(functools.partial(q_abs, Es=sol, pol='x'))
         Ey.interpolate(functools.partial(q_abs, Es=sol, pol='y'))

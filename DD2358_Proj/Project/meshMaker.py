@@ -51,6 +51,7 @@ class MeshData():
                  defect_angles = [45, 67, 32],
                  viewGMSH = False,
                  FF_surface = False,
+                 order = 1,
                 ):
         '''
         Makes it - given various inputs
@@ -80,6 +81,7 @@ class MeshData():
         :param defect_angles: [x, y, z] angles to rotate about these axes
         :param viewGMSH: If True, plots the mesh after creation then exits
         :param FF_surface: If True, creates a spherical shell with a radius slightly lower than the domain's, to calculate the farfield on (domain_geom should also be spherical)
+        :param order: Order of the mesh elements
         '''
         
         self.comm = comm                               # MPI communicator
@@ -96,6 +98,7 @@ class MeshData():
         self.tdim = 3 ## Tetrahedra dimensionality - 3D
         self.fdim = self.tdim - 1 ## Facet dimensionality - 2D
         self.FF_surface = FF_surface
+        self.order = order
         
         
         if(PML_thickness == 0): ## if not specified, calculate it
@@ -309,7 +312,7 @@ class MeshData():
         self.antenna_surface_markers = self.comm.bcast(antenna_surface_markers, root=self.model_rank)
         self.farfield_surface_marker = self.comm.bcast(farfield_surface_marker, root=self.model_rank)
     
-        
+        gmsh.model.mesh.setOrder(self.order)
         self.mesh, self.subdomains, self.boundaries = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm=self.comm, rank=self.model_rank, gdim=self.tdim, partitioner=dolfinx.mesh.create_cell_partitioner(dolfinx.cpp.mesh.GhostMode.shared_facet))
         gmsh.finalize()
         
