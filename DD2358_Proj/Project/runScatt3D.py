@@ -242,7 +242,7 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testSphereScattering(h=1/5, fem_degree=1, showPlots=True)
+    #testSphereScattering(h=1/5, fem_degree=1, showPlots=False)
     #convergenceTestPlots('pmlR0')
     convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
