@@ -148,7 +148,7 @@ if __name__ == '__main__':
             elif(convergence == 'dxquaddeg'):
                 probOptions = dict(quaddeg = ks[i])
                 
-            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', order=3, FF_surface = True, **meshOptions)
+            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', order=1, FF_surface = True, **meshOptions)
             prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, fem_degree=3, **probOptions)
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
@@ -190,7 +190,7 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'order3fem3convergence.png')
+            plt.savefig(prob.dataFolder+prob.name+convergence+'order1fem3convergence.png')
             plt.show()
             
     def testSolverSettings(h = 1/12): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
