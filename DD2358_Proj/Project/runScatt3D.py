@@ -111,7 +111,7 @@ if __name__ == '__main__':
         
     def testSphereScattering(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', order=3, object_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', order=1, object_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', freqs = freqs, material_epsr=2.0, fem_degree=fem_degree)
@@ -124,7 +124,7 @@ if __name__ == '__main__':
  
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(4, 16, 7)
+            ks = np.linspace(4, 16, 6)
         elif(convergence == 'pmlR0'): ## result of this is that the value must be below 1e-2, from there further reduction matches the forward-scattering better, the back-scattering less
             ks = np.linspace(0, 25, 10)
             ks = 10**(-ks)
@@ -148,8 +148,8 @@ if __name__ == '__main__':
             elif(convergence == 'dxquaddeg'):
                 probOptions = dict(quaddeg = ks[i])
                 
-            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', order=1, FF_surface = True, **meshOptions)
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, fem_degree=1, **probOptions)
+            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', order=3, FF_surface = True, **meshOptions)
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0, Nf=1, fem_degree=3, **probOptions)
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
@@ -190,18 +190,18 @@ if __name__ == '__main__':
             ax1.set_yscale('log')
             ax1.legend()
             fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'convergence.png')
+            plt.savefig(prob.dataFolder+prob.name+convergence+'order3fem3convergence.png')
             plt.show()
             
     def testSolverSettings(h = 1/12): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
-        omegas = np.linspace(0.01, 1.99, 500)#np.arange(1, 5) ## the setting being varied
+        omegas = np.arange(0, 14) ## the setting being varied
         num = np.size(omegas)
         ts = np.zeros(num)
         its = np.zeros(num)
         norms = np.zeros(num)
         for i in range(len(omegas)):
-            sets = {"pc_sor_omega" : omegas[i]}
+            sets = {"ksp_lgmres_augment" : omegas[i]}
             prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0, fem_degree=1, solver_settings=sets)
             ts[i] = prob.calcTime
             its[i] = prob.solver_its
@@ -219,7 +219,7 @@ if __name__ == '__main__':
         l3, = ax3.plot(omegas, norms, label = 'norms', linewidth = 2, color = 'orange')
         
         plt.title(f'Solver Time by Setting (fem_degree=1, h={h:.2f})')
-        ax1.set_xlabel(r'Setting (pc_sor_its)')
+        ax1.set_xlabel(r'Setting (ksp_lgmres_augment)')
         ax1.set_ylabel('#')
         ax2.set_ylabel('Time [s]')
         ax3.set_ylabel('log10(Norms)')
@@ -235,18 +235,18 @@ if __name__ == '__main__':
         ax1.legend(handles=[l1, l2, l3])
         
         fig.tight_layout()
-        plt.savefig(prob.dataFolder+prob.name+'pc_sor_its_solversettingsplot.png')
-        #plt.show()
+        plt.savefig(prob.dataFolder+prob.name+'ksp_lgmres_augment_solversettingsplot.png')
+        plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    testSphereScattering(h=1/10, fem_degree=3, showPlots=False)
+    #testSphereScattering(h=1/5, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
-    #convergenceTestPlots('meshsize')
+    convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    #testSolverSettings(h=1/8)
+    #testSolverSettings(h=1/15)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
