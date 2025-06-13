@@ -226,11 +226,13 @@ if __name__ == '__main__':
             settings.append( {"pc_sor_omega": omega} )
         num = len(settings)
         
-        for i in range(num):
-            print(i, settings[i])
-        exit()
+        #=======================================================================
+        # for i in range(num):
+        #     print(i, settings[i])
+        # exit()
+        #=======================================================================
         
-        omegas = np.arange(num) ## Number of the setting being varied, if it is not a numerical quantity
+        omegas = np.linspace(0,2,1001) #np.arange(num) ## Number of the setting being varied, if it is not a numerical quantity
         ts = np.zeros(num)
         its = np.zeros(num)
         norms = np.zeros(num)
