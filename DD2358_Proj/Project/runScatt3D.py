@@ -222,17 +222,13 @@ if __name__ == '__main__':
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         settings = [] ## list of solver settings
         maxTime = 10 ## max solver time in [s], to cut off overly-long runs
-        for nlvls in [1, 2, 3, 4, 5]:
-            for filter in [-0.9, -0.2, 0, 0.001, 0.05, 0.1, 0.25]:
-                for thresh in [-0.9, -0.7, -0.2, 0, .01, .1, .05, .4]:
-                    settings.append( {"pc_hypre_parasails_nlevels": nlvls, "pc_hypre_parasails_filter": filter, "pc_hypre_parasails_thresh": thresh} )
+        for omega in np.linspace(0,2,1001):
+            settings.append( {"pc_sor_omega": omega} )
         num = len(settings)
         
-        #=======================================================================
-        # for i in range(num):
-        #     print(i, settings[i])
-        # exit()
-        #=======================================================================
+        for i in range(num):
+            print(i, settings[i])
+        exit()
         
         omegas = np.arange(num) ## Number of the setting being varied, if it is not a numerical quantity
         ts = np.zeros(num)
@@ -275,7 +271,7 @@ if __name__ == '__main__':
         ax1.legend(handles=[l1, l2, l3])
         
         fig.tight_layout()
-        plt.savefig(prob.dataFolder+prob.name+'hypre_parasails_solversettingsplot.png')
+        plt.savefig(prob.dataFolder+prob.name+'pc_sor_omega_solversettingsplot.png')
         plt.show()
         
     #testRun(h=1/20)
