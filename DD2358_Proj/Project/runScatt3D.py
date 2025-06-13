@@ -222,7 +222,7 @@ if __name__ == '__main__':
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         settings = [] ## list of solver settings
         maxTime = 10 ## max solver time in [s], to cut off overly-long runs
-        for omega in [0, 1, 2, 3, 4, 5, 9]:
+        for omega in [0, 1, 4, 8, 12, 16, 20, 25]:
             settings.append( {"ksp_lgmres_augment": omega} )
         num = len(settings)
         
@@ -244,8 +244,8 @@ if __name__ == '__main__':
             its[i] = prob.solver_its
             norms[i] = prob.solver_norm
         fig, ax1 = plt.subplots()
-        fig.subplots_adjust(right=0.75)
-        fig.set_size_inches(22.5, 14.5)
+        fig.subplots_adjust(right=0.45)
+        fig.set_size_inches(29.5, 14.5)
         ax2 = ax1.twinx()
         ax3 = ax1.twinx()
         ax3.spines.right.set_position(("axes", 1.2))
@@ -273,6 +273,7 @@ if __name__ == '__main__':
         ax1.legend(handles=[l1, l2, l3])
         
         fig.tight_layout()
+        fig.tight_layout() ## need both of these for some reason
         plt.savefig(prob.dataFolder+prob.name+'ksp_lgmres_augment_solversettingsplot.png')
         plt.show()
         
@@ -284,7 +285,7 @@ if __name__ == '__main__':
     #convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    testSolverSettings(h=1/10)
+    testSolverSettings(h=1/25)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
