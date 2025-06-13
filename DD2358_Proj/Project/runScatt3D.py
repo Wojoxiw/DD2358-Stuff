@@ -14,6 +14,7 @@ import dolfinx.fem.petsc
 #os.environ['NUMEXPR_NUM_THREADS'] = '1' # maybe also relevent
 from mpi4py import MPI
 import gmsh
+import matplotlib
 from matplotlib import pyplot as plt
 import matplotlib.lines as mlines
 import functools
@@ -111,10 +112,10 @@ if __name__ == '__main__':
         
     def testSphereScattering(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', order=1, object_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', order=fem_degree, object_geom='sphere', FF_surface = True)
         prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', freqs = freqs, material_epsr=2.0, fem_degree=fem_degree)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=True, excitation='planewave', freqs = freqs, material_epsr=2.0, fem_degree=fem_degree)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         if(showPlots):
@@ -126,10 +127,13 @@ if __name__ == '__main__':
         if(convergence == 'meshsize'):
             ks = np.linspace(4, 16, 6)
         elif(convergence == 'pmlR0'): ## result of this is that the value must be below 1e-2, from there further reduction matches the forward-scattering better, the back-scattering less
-            ks = np.linspace(0, 25, 10)
+            ks = np.linspace(2, 15, 10)
             ks = 10**(-ks)
         elif(convergence == 'dxquaddeg'): ## Result of this showed a large increase in time near the end, and an accuracy improvement for increasing from 2 to 3. Not sending any value causes a huge memory cost/error (process gets killed).
             ks = np.arange(1, 20)
+            
+        ndofs = np.zeros_like(ks) ## to hold problem size
+        calcT = np.zeros_like(ks) ## to hold problem size
             
         areaVals = [] ## vals returned from the calculations
         FFrmsRelErrs = np.zeros(len(ks)) ## for the farfields
@@ -153,6 +157,8 @@ if __name__ == '__main__':
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
+                ndofs[i] = prob.ndofs
+                calcT[i] = prob.calcTime
                 khatRmsErrs[i] = np.sqrt(np.sum(khats**2)/np.size(khats))
                 khatMaxErrs[i] = np.max(khats)
                 intenss = np.abs(farfields[0,:,0])**2 + np.abs(farfields[0,:,1])**2
@@ -166,48 +172,81 @@ if __name__ == '__main__':
                     print(f'Run {i+1}/{len(ks)} completed')
         if(comm.rank == model_rank): ## only needed for main process
             areaVals = np.array(areaVals)
-            
-            fig1 = plt.figure()
-            ax1 = plt.subplot(1, 1, 1)
-            ax1.grid(True)
-            ax1.set_title('Convergence of Different Values')
-            if(convergence == 'meshsize'):
-                ax1.set_xlabel(r'Inverse mesh size ($\lambda / h$)')
-            elif(convergence == 'pmlR0'):
-                ax1.set_xlabel(r'R0')
-                ax1.set_xscale('log')
-            elif(convergence == 'dxquaddeg'):
-                ax1.set_xlabel(r'dx Quadrature Degree')
-            
             real_area = 4*pi*prob.refMeshdata.FF_surface_radius**2
-            ax1.plot(ks, np.abs((real_area-areaVals)/real_area), marker='o', linestyle='--', label = r'area - rel. error')
-            ax1.plot(ks, khatMaxErrs, marker='o', linestyle='--', label = r'khat integral - max. abs. error')
-            ax1.plot(ks, khatRmsErrs, marker='o', linestyle='--', label = r'khat integral - RMS error')
-            ax1.plot(ks, FFrmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
-            ax1.plot(ks, FFrmsveryRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS. veryrel. error')
-            ax1.plot(ks, FFforwardrelErr, marker='o', linestyle='--', label = r'Farfield forward rel. error')
             
-            ax1.set_yscale('log')
-            ax1.legend()
-            fig1.tight_layout()
-            plt.savefig(prob.dataFolder+prob.name+convergence+'order3fem3convergence.png')
-            plt.show()
+            
+            if(convergence == 'meshsize'): ## plot 3 times - also vs time and ndofs
+                i=0
+            else:
+                i=2
+            
+            while i<3: ## just to do the multiple plots
+                i+=1
+                fig1 = plt.figure()
+                ax1 = plt.subplot(1, 1, 1)
+                ax1.grid(True)
+                ax1.set_title('Convergence of Different Values')
+                
+                
+                
+                if(convergence == 'meshsize'):
+                    if(i==0):
+                        ax1.set_xlabel(r'Inverse mesh size ($\lambda / h$)')
+                    elif(i==1):
+                        ax1.set_xlabel(r'Calculation Time [s]')
+                        ks = calcT
+                    else:
+                        ax1.set_xlabel(r'# of dofs')
+                        ks = ndofs
+                elif(convergence == 'pmlR0'):
+                    ax1.set_xlabel(r'R0')
+                    ax1.set_xscale('log')
+                elif(convergence == 'dxquaddeg'):
+                    ax1.set_xlabel(r'dx Quadrature Degree')
+                
+                ax1.plot(ks, np.abs((real_area-areaVals)/real_area), marker='o', linestyle='--', label = r'area - rel. error')
+                ax1.plot(ks, khatMaxErrs, marker='o', linestyle='--', label = r'khat integral - max. abs. error')
+                ax1.plot(ks, khatRmsErrs, marker='o', linestyle='--', label = r'khat integral - RMS error')
+                ax1.plot(ks, FFrmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
+                ax1.plot(ks, FFrmsveryRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS. veryrel. error')
+                ax1.plot(ks, FFforwardrelErr, marker='o', linestyle='--', label = r'Farfield forward rel. error')
+                
+                
+                ax1.set_yscale('log')
+                ax1.legend()
+                fig1.tight_layout()
+                plt.savefig(prob.dataFolder+prob.name+convergence+'order3fem3convergence.png')
+                plt.show()
             
     def testSolverSettings(h = 1/12): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
-        omegas = np.arange(0, 14) ## the setting being varied
-        num = np.size(omegas)
+        settings = [] ## list of solver settings
+        maxTime = 10 ## max solver time in [s], to cut off overly-long runs
+        for nlvls in [1, 2, 3, 4, 5]:
+            for filter in [-0.9, -0.2, 0, 0.001, 0.05, 0.1, 0.25]:
+                for thresh in [-0.9, -0.7, -0.2, 0, .01, .1, .05, .4]:
+                    settings.append( {"pc_hypre_parasails_nlevels": nlvls, "pc_hypre_parasails_filter": filter, "pc_hypre_parasails_thresh": thresh} )
+        num = len(settings)
+        
+        #=======================================================================
+        # for i in range(num):
+        #     print(i, settings[i])
+        # exit()
+        #=======================================================================
+        
+        omegas = np.arange(num) ## Number of the setting being varied, if it is not a numerical quantity
         ts = np.zeros(num)
         its = np.zeros(num)
         norms = np.zeros(num)
-        for i in range(len(omegas)):
-            sets = {"ksp_lgmres_augment" : omegas[i]}
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0, fem_degree=1, solver_settings=sets)
+        for i in range(num):
+            print('\033[94m'+f'Run {i} with settings:',settings[i],'\033[0m')
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0, fem_degree=1, solver_settings=settings[i], max_solver_time=maxTime)
             ts[i] = prob.calcTime
             its[i] = prob.solver_its
             norms[i] = prob.solver_norm
         fig, ax1 = plt.subplots()
         fig.subplots_adjust(right=0.75)
+        fig.set_size_inches(22.5, 14.5)
         ax2 = ax1.twinx()
         ax3 = ax1.twinx()
         ax3.spines.right.set_position(("axes", 1.2))
@@ -218,8 +257,8 @@ if __name__ == '__main__':
         l2, = ax2.plot(omegas, ts, label = 'Time [s]', linewidth = 2, color='tab:blue')
         l3, = ax3.plot(omegas, norms, label = 'norms', linewidth = 2, color = 'orange')
         
-        plt.title(f'Solver Time by Setting (fem_degree=1, h={h:.2f})')
-        ax1.set_xlabel(r'Setting (ksp_lgmres_augment)')
+        plt.title(f'Solver Time by Setting (fem_degree=1, h={h:.2f}, dofs={prob.ndofs:.2e})')
+        ax1.set_xlabel(r'Setting (composite try #)')
         ax1.set_ylabel('#')
         ax2.set_ylabel('Time [s]')
         ax3.set_ylabel('log10(Norms)')
@@ -235,18 +274,18 @@ if __name__ == '__main__':
         ax1.legend(handles=[l1, l2, l3])
         
         fig.tight_layout()
-        plt.savefig(prob.dataFolder+prob.name+'ksp_lgmres_augment_solversettingsplot.png')
+        plt.savefig(prob.dataFolder+prob.name+'hypre_parasails_solversettingsplot.png')
         plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testSphereScattering(h=1/5, fem_degree=1, showPlots=False)
+    #testSphereScattering(h=1/4, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
-    convergenceTestPlots('meshsize')
+    #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    #testSolverSettings(h=1/15)
+    testSolverSettings(h=1/4)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):

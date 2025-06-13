@@ -14,6 +14,7 @@ import sys
 from scipy.constants import c as c0, mu_0 as mu0, epsilon_0 as eps0, pi
 from petsc4py import PETSc
 import memTimeEstimation
+from pathlib import Path
 from matplotlib import pyplot as plt
 from matplotlib.collections import _MeshData
 eta0 = np.sqrt(mu0/eps0)
@@ -65,6 +66,7 @@ class Scatt3DProblem():
                  PML_R0 = 1e-11, ## 'intended damping for reflections from the PML', or something similar...
                  quaddeg = 5, ## quadrature degree for dx, default to 5 to avoid slowdown with pml if it defaults to higher?
                  solver_settings = {}, ## dictionary of additional solver settings
+                 max_solver_time = -1, ## If an iteration finishes after this time, the solver aborts - only used for tests, currently. Disabled if negative
                  ):
         """Initialize the problem."""
         
@@ -94,6 +96,7 @@ class Scatt3DProblem():
         self.PML_R0 = PML_R0
         self.dxquaddeg = quaddeg
         self.solver_settings = solver_settings
+        self.max_solver_time = max_solver_time
             
         self.epsr_bkg = epsr_bkg
         self.mur_bkg = mur_bkg
@@ -163,6 +166,7 @@ class Scatt3DProblem():
         # Set up some FEM function spaces and boundary condition stuff.
         curl_element = basix.ufl.element('N1curl', meshData.mesh.basix_cell(), self.fem_degree)
         self.Vspace = dolfinx.fem.functionspace(meshData.mesh, curl_element)
+        self.ndofs = self.Vspace.dofmap.index_map.size_global * self.Vspace.dofmap.index_map_bs ## from https://github.com/jpdean/maxwell/blob/master/solver.py#L108-L162 - presumably this is accurate? Only the first coefficient is nonone
         self.ScalarSpace = dolfinx.fem.functionspace(meshData.mesh, ('CG', 1)) ## this is just used for plotting+post-computations, so use degree... 1?
         self.Wspace = dolfinx.fem.functionspace(meshData.mesh, ("DG", 0))
         # Create measures for subdomains and surfaces
@@ -215,7 +219,7 @@ class Scatt3DProblem():
     def CalculatePML(self, meshData, k):
         '''
         Set up the PML - stretched coordinates to form a perfectly-matched layer which absorbs incoming (perpendicular) waves
-         Since we calculate at many frequencies, recalculate this for each freq. (Could also precalc it for each freq...)
+         Since we calculate at many frequencies, recalculate this for each freq. (should also just work for many frequencies without recalculating, but the calculation is quick)
         :param k: Frequency used for coordinate stretching.
         '''
         # Set up the PML
@@ -345,12 +349,104 @@ class Scatt3DProblem():
             - ufl.inner(k00**2*(self.epsr - 1/self.mur*self.mur_bkg*self.epsr_bkg)*Eb, v)*self.dx_dom + eval(F_antennas_str) ## background field and antenna terms
         bcs = [self.bc_pec]
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
-        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory
-        #petsc_options={"ksp_type": "lgmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000,"pc_type": "sor", "pc_sor_omega": .8, "ksp_lgmres_augment" : 4, **self.solver_settings} ## (https://petsc.org/release/manual/ksp/) "pc_sor_omega": 0.8
-        #petsc_options={"ksp_type": "agmres", "ksp_rtol": 1e-3, "ksp_atol": 1e-6, "ksp_max_it": 10000, "pc_type": "sor"}
+        max_its = 10000
+        conv_sets = {"ksp_rtol": 1e-6, "ksp_atol": 1e-15, "ksp_max_it": max_its} ## convergence settings
+        #petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps", "mat_mumps_icntl_7": 1} ## the basic option - fast, robust/accurate, but takes a lot of memory. try the last option for ordering?
+        #petsc_options={"ksp_type": "lgmres", "pc_type": "sor", "pc_sor_omega": .8, "ksp_lgmres_augment" : 3, **self.solver_settings, **conv_sets} ## (https://petsc.org/release/manual/ksp/)
+        #petsc_options={"ksp_type": "lgmres", 'pc_type': 'asm', 'sub_pc_type': 'sor', **conv_sets} ## is okay
+        #petsc_options={**conv_sets, **self.solver_settings}
+        #petsc_options={"ksp_type": "lgmres", "pc_type": "ksp", "pc_ksp_type":"gmres", 'ksp_max_it': 1, 'pc_ksp_rtol' : 1e-1, "pc_ksp_pc_type": "sor", **conv_sets}
+        #petsc_options={'ksp_type': 'gmres', 'pc_type': 'hypre', 'pc_hypre_type': 'ams', 'pc_hypre_ams_cycle_type': 7, 'pc_hypre_ams_relax_times': 2, **conv_sets, **self.solver_settings}
+        #petsc_options={'ksp_type': 'fgmres', 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 100, "ksp_pc_type": 'sor', **conv_sets, **self.solver_settings}
+        petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 150, 'pc_type': 'hypre', 'pc_hypre_type': 'parasails', **conv_sets, **self.solver_settings}
         
-        problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options)
-
+        cache_dir = f"{str(Path.cwd())}/.cache"
+        jit_options={}
+        jit_options= {"cffi_extra_compile_args": ['-Ofast', "-march=native"], "cache_dir": cache_dir, "cffi_libraries": ["m"]} ## possibly this speeds things up a little. not sure if cache dir will cause errors on cluster
+        
+        problem = dolfinx.fem.petsc.LinearProblem(lhs, rhs, bcs=bcs, petsc_options=petsc_options, jit_options=jit_options)
+        
+        ksp = problem.solver
+        pc = ksp.getPC()
+        time1 = timer()
+        if(self.max_solver_time>0):
+            class TimeAbortMonitor:
+                def __init__(self, max_time, comm):
+                    self.timeout = max_time
+                    self.start_time = timer()
+                    self.comm = comm
+                
+                def __call__(self, ksp, its, rnorm):
+                    if timer() - self.start_time > self.timeout:
+                        if(self.comm.rank == 0):
+                            PETSc.Sys.Print(f"Aborting solve after {its} iterations due to timeout.")
+                        ksp.setConvergedReason(PETSc.KSP.ConvergedReason.DIVERGED_NULL)
+                        
+            ksp.setMonitor(TimeAbortMonitor(self.max_solver_time, self.comm))
+        
+        #=======================================================================
+        # def monitor(ksp, its, rnorm):
+        #     if(its%1001 == 0):
+        #         print(f"[Inner KSP] Iteration {its}, residual = {rnorm}")
+        # ksp_inner = pc.getKSP()
+        # ksp_inner.setMonitor(monitor)
+        # #ksp_inner.setTolerances(rtol=1e-2, atol=1e-10, max_it=102)
+        #=======================================================================
+        
+        #=======================================================================
+        # ###HYPRE TRY
+        # Freal = ufl.real(F)
+        # Fimag = ufl.imag(F)
+        # lhs_real, rhs_real = dolfinx.fem.form(ufl.lhs(Freal)), dolfinx.fem.form(ufl.rhs(Freal))
+        # lhs_imag, rhs_imag = dolfinx.fem.form(ufl.lhs(Fimag)), dolfinx.fem.form(ufl.rhs(Fimag))
+        # A_r = dolfinx.fem.petsc.assemble_matrix(lhs_real, bcs)
+        # A_i = dolfinx.fem.petsc.assemble_matrix(lhs_imag, bcs)
+        # A_r.assemble()
+        # A_i.assemble()
+        # A = PETSc.Mat().createNest([[A_r, -1*A_i.duplicate(copy=True)], ##  Ar -Ai
+        #                     [-1*A_i, -1*A_r.duplicate(copy=True)]])     ## -Ai  Ar
+        # A.assemble()
+        # 
+        # b_real = dolfinx.fem.petsc.assemble_vector(rhs_real)
+        # b_imag = dolfinx.fem.petsc.assemble_vector(rhs_imag)
+        # b_real.ghostUpdate()
+        # b_imag.ghostUpdate()
+        # b = PETSc.Vec().createNest([b_real, -1*b_imag])
+        # 
+        # ksp = PETSc.KSP().create(self.comm)
+        # ksp.setType("fgmres")
+        # ksp.setTolerances(rtol=1e-6, atol=1e-12)
+        # ksp.setOperators(A, b)
+        # pc = ksp.getPC()
+        # pc.setType('hypre')
+        # pc.setHYPREType('ams')
+        # ### HYPRE AMS attempt
+        # self.Vspace_H1 = dolfinx.fem.functionspace(meshData.mesh, basix.ufl.element("Lagrange", meshData.mesh.basix_cell(), self.fem_degree, dtype=dolfinx.default_real_type))
+        # self.Vspace_curl = dolfinx.fem.functionspace(meshData.mesh, basix.ufl.element("N1curl", meshData.mesh.basix_cell(), self.fem_degree, dtype=dolfinx.default_real_type))
+        # G = dolfinx.fem.petsc.discrete_gradient(self.Vspace_H1, self.Vspace_curl)
+        # G1 = G.copy()
+        # G_realified = PETSc.Mat().createNest([[G, None],
+        #                                      [None, G1]])
+        # G_realified.assemble()
+        # pc.setHYPREDiscreteGradient(G_realified)
+        # if self.fem_degree == 1:
+        #     # For the lowest order base (k=1), we can supply interpolation
+        #     # of the '1' vectors in the space self.Vspace. Hypre can then construct
+        #     # the required operators from G and the '1' vectors.
+        #     
+        #     cvec0, cvec1, cvec2 = dolfinx.fem.Function(self.Vspace), dolfinx.fem.Function(self.Vspace), dolfinx.fem.Function(self.Vspace)
+        #     cvec0.interpolate(lambda x: np.vstack((np.ones_like(x[0]), np.zeros_like(x[1]), np.zeros_like(x[2]))))
+        #     cvec1.interpolate(lambda x: np.vstack((np.zeros_like(x[0]), np.ones_like(x[1]), np.zeros_like(x[2]))))
+        #     cvec2.interpolate(lambda x: np.vstack((np.zeros_like(x[0]), np.zeros_like(x[1]), np.ones_like(x[2]))))
+        #     
+        #     vec_x = PETSc.Vec().createWithArray(np.concatenate([cvec0.x.array, cvec0.x.array]), comm=self.comm)
+        #     vec_y = PETSc.Vec().createWithArray(np.concatenate([cvec1.x.array, cvec1.x.array]), comm=self.comm)
+        #     vec_z = PETSc.Vec().createWithArray(np.concatenate([cvec2.x.array, cvec2.x.array]), comm=self.comm)
+        #     
+        #     pc.setHYPRESetEdgeConstantVectors(vec_x, vec_y, vec_z)
+        # ###
+        #=======================================================================
+            
         def ComputeFields():
             '''
             Computes the fields. There are two cases: one with antennas, and one without (PW excitation)
@@ -399,7 +495,7 @@ class Scatt3DProblem():
         
         if(computeRef):
             if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
-                print(f'Rank {self.comm.rank}: Computing REF solutions')
+                print(f'Rank {self.comm.rank}: Computing REF solutions (ndofs={self.ndofs})')
             sys.stdout.flush()
             self.epsr.x.array[:] = self.epsr_array_ref
             self.S_ref, self.solutions_ref = ComputeFields()    
@@ -414,10 +510,12 @@ class Scatt3DProblem():
         fname=self.dataFolder+self.name+"solver_output.txt"
         viewer = PETSc.Viewer().createASCII(fname)
         solver.view(viewer)
+        self.solver_its = solver.its
+        self.solver_norm = solver.norm
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank)): ## print solver info for the final solve - presumably this is representative of all solves
             print(f'Converged for reason: {solver.reason}, after {solver.its} iterations. Norm: {solver.norm}') ## if reason is negative, it diverged (see https://petsc.org/release/manualpages/KSP/KSPConvergedReason/)
-            self.solver_its = solver.its
-            self.solver_norm = solver.norm
+            if(self.solver_its == max_its):
+                print('\033[93m' + 'Warning: solver failed to converge.' + '\033[0m')
             if(self.verbosity > 3):
                 solver_output = open(fname, "r") ## this prints to console
                 for line in solver_output.readlines():
@@ -753,11 +851,12 @@ class Scatt3DProblem():
         else: ## return nan for non-main processes, just in case
             return np.nan
         
-    def calcNearField(self, reference=True, direction = 'forward'):
+    def calcNearField(self, reference=True, direction = 'forward', FEKOcomp=True):
         '''
         Computes + plots the near-field along a line, using interpolation. Compares to miepython's e_near, which is untested. Should still be similar (for farfield test case)
         :param reference: Whether this is being computed for the DUT case or the reference
         :param direction: 'forward' for on-axis (z) scattering, 'side' for sideways (y) scattering
+        :param FEKOcomp: Also plots a comparison with FEKO results
         '''
         if( (self.verbosity > 1 and self.comm.rank == self.model_rank)):
                 print(f'Calculating near-field values...')
@@ -789,8 +888,21 @@ class Scatt3DProblem():
         points = np.zeros((3, numpts*2))
         if(direction == 'forward'):
             points[2] = np.hstack((negrs, rs)) ## this should be the forward scattering
+            if(FEKOcomp):
+                FEKOdat = np.loadtxt('TestStuff/ForwardScatt.efe', skiprows=16) #[Xpos, Ypos, Zpos, Exreal, Exim, Eyreal, Eyim, Ezreal, Ezim]
+                FEKOpos = FEKOdat[:, 2]
         elif(direction == 'side'):
             points[1] = np.hstack((negrs, rs)) ## this should be the side-scattering (y-axis)
+            if(FEKOcomp):
+                FEKOdat = np.loadtxt('TestStuff/SidewaysScatt.efe', skiprows=16) #[Xpos, Ypos, Zpos, Exreal, Exim, Eyreal, Eyim, Ezreal, Ezim]
+                FEKOpos = FEKOdat[:, 1]
+                
+        if(FEKOcomp):
+            FEKO_Es = np.zeros((np.shape(FEKOdat)[0], 3), dtype=complex)
+            FEKO_Es[:, 0] = FEKOdat[:, 3] + 1j*FEKOdat[:, 4] - 1 ## minus 1 to remove incident field?
+            FEKO_Es[:, 1] = FEKOdat[:, 5] + 1j*FEKOdat[:, 6]
+            FEKO_Es[:, 2] = FEKOdat[:, 7] + 1j*FEKOdat[:, 8]
+            
         bb_tree = dolfinx.geometry.bb_tree(meshData.mesh, meshData.mesh.topology.dim)
         cells = []
         points_on_proc = [] ## points on this processor
@@ -828,8 +940,8 @@ class Scatt3DProblem():
         Ez.interpolate(functools.partial(q_abs, Es=sol, pol='z'))
         ###############
         ###############
-        E_values2 = self.solutions_ref[0][0].eval(points_on_proc, cells) ## less/non-interpolated
-        E_values = np.hstack((Ex.eval(points_on_proc, cells), Ey.eval(points_on_proc, cells), Ez.eval(points_on_proc, cells)))
+        E_values = self.solutions_ref[0][0].eval(points_on_proc, cells) ## less/non-interpolated
+        E_values2 = np.hstack((Ex.eval(points_on_proc, cells), Ey.eval(points_on_proc, cells), Ez.eval(points_on_proc, cells))) ## interpolated... this helps smooth for elements of order 1. not used...
         import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
         import miepython.field
         m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
@@ -845,9 +957,9 @@ class Scatt3DProblem():
             :param k: wavenumber
             '''
             if(direction == 'forward'): ## along the z-axis
-                E_pw = np.array([self.PW_pol[2], self.PW_pol[0], self.PW_pol[1]])
+                E_pw = np.array([self.PW_pol[1], self.PW_pol[2], self.PW_pol[0]])
             elif(direction == 'side'): ## along x
-                E_pw = np.array([self.PW_pol[0], self.PW_pol[1], self.PW_pol[2]])
+                E_pw = np.array([self.PW_pol[2], self.PW_pol[1], self.PW_pol[0]])
             k_pw = k*self.PW_dir ## z-directed
             E_pw = E_pw*np.exp(-1j*np.dot(k_pw, x))
             return E_pw
@@ -856,11 +968,11 @@ class Scatt3DProblem():
             r = rs[q]
             nr = -1*negrs[q] ## still positive, just in other direction due to angle
             if(np.abs(r)<meshData.object_radius): ## miepython seems to include the incident field inside the sphere
-                t = 0
+                t = 1
             else:
                 t = 0
             if(np.abs(nr)<meshData.object_radius): ## miepython seems to include the incident field inside the sphere
-                t2 = 0
+                t2 = 1
             else:
                 t2 = 0
             if(direction == 'forward'):
@@ -880,17 +992,19 @@ class Scatt3DProblem():
         ax1.plot(np.hstack((negrs, rs)), np.abs(E_values[:, 2]), label='z-comp.', color = 'green')
         ## plot magnitudes
         ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(enears[:, 0])**2+np.abs(enears[:, 1])**2+np.abs(enears[:, 2])**2), label='miepython')
-        ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation, interpolated')
-        #ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation')
+        ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values[:, 0])**2+np.abs(E_values[:, 1])**2+np.abs(E_values[:, 2])**2), label='simulation')
+        #ax2.plot(np.hstack((negrs, rs)), np.sqrt(np.abs(E_values2[:, 0])**2+np.abs(E_values2[:, 1])**2+np.abs(E_values2[:, 2])**2), label='simulation, interpolated')
         ## plot real/imags
         ax3.plot(np.hstack((negrs, rs)), np.real(E_values[:, 0]), label='sim., x-pol real')
         ax3.plot(np.hstack((negrs, rs)), np.imag(E_values[:, 0]), label='sim., x-pol imag.')
         if(direction == 'forward'):
-            ax3.plot(np.hstack((negrs, rs)), np.real(enears[:, 1]), label='miepython, theta-pol real', linestyle = ':')
-            ax3.plot(np.hstack((negrs, rs)), np.imag(enears[:, 1]), label='miepython, theta-pol imag.', linestyle = ':')
+            ax3.plot(np.hstack((negrs, rs)), np.real(enears[:, 2]), label='miepython, phi-pol real', linestyle = ':')
+            ax3.plot(np.hstack((negrs, rs)), np.imag(enears[:, 2]), label='miepython, phi-pol imag.', linestyle = ':')
         elif(direction == 'side'):
             ax3.plot(np.hstack((negrs, rs)), np.real(enears[:, 2]), label='miepython, phi-pol real', linestyle = ':')
             ax3.plot(np.hstack((negrs, rs)), np.imag(enears[:, 2]), label='miepython, phi-pol imag.', linestyle = ':')
+        ax3.plot(FEKOpos, np.imag(FEKO_Es[:, 0]), label='FEKO, x-pol imag.', linestyle = '--')
+        ax3.plot(FEKOpos, np.real(FEKO_Es[:, 0]), label='FEKO, x-pol real', linestyle = '--')
 
         ax1.legend()
         ax2.legend()

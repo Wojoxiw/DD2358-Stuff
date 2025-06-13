@@ -126,6 +126,7 @@ class MeshData():
         else:
             print('Invalid geometry type in MeshData, exiting...')
             exit()
+        self.PML_thickness = PML_thickness*self.lambda0 ## for potential use later
         
         ## Antenna geometry/other parameters:
         
@@ -176,6 +177,8 @@ class MeshData():
             gmsh.option.setNumber('General.Verbosity', self.verbosity)
             gmsh.option.setNumber("Mesh.CharacteristicLengthMin", self.h)
             gmsh.option.setNumber("Mesh.CharacteristicLengthMax", self.h)
+            gmsh.model.mesh.setOrder(self.order)
+            gmsh.option.setNumber("Mesh.HighOrderOptimize", 2)
             gmsh.logger.start()
              
             inPECSurface = []; inAntennaSurface = []; antennas_DimTags = []
@@ -312,7 +315,6 @@ class MeshData():
         self.antenna_surface_markers = self.comm.bcast(antenna_surface_markers, root=self.model_rank)
         self.farfield_surface_marker = self.comm.bcast(farfield_surface_marker, root=self.model_rank)
     
-        gmsh.model.mesh.setOrder(self.order)
         self.mesh, self.subdomains, self.boundaries = dolfinx.io.gmshio.model_to_mesh(gmsh.model, comm=self.comm, rank=self.model_rank, gdim=self.tdim, partitioner=dolfinx.mesh.create_cell_partitioner(dolfinx.cpp.mesh.GhostMode.shared_facet))
         gmsh.finalize()
         

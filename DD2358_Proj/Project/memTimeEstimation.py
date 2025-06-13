@@ -60,6 +60,7 @@ class runTimesMems():
             self.mem = prob.memCost # Total memory cost
             self.fem_degree = prob.fem_degree ## Finite element degree
             self.solve_its = prob.solver_its ## Iterations taken to solve the final problem
+            self.ndofs = prob.ndofs ## Number of degrees of freedom to the problem? Time/mem should scale off of this, rather than size
             self.solve_norm = prob.solver_norm ## Norm of found solution
             self.extraInfo = extraInfo
             
