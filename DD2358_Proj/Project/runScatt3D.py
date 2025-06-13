@@ -275,7 +275,7 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.tight_layout() ## need both of these for some reason
         plt.savefig(prob.dataFolder+prob.name+'fmres+innerksp_solversettingsplot.png')
-        plt.show()
+        #plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()

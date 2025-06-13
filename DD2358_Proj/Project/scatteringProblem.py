@@ -357,7 +357,7 @@ class Scatt3DProblem():
         #petsc_options={**conv_sets, **self.solver_settings}
         #petsc_options={"ksp_type": "lgmres", "pc_type": "ksp", "pc_ksp_type":"gmres", 'ksp_max_it': 1, 'pc_ksp_rtol' : 1e-1, "pc_ksp_pc_type": "sor", **conv_sets}
         #petsc_options={'ksp_type': 'gmres', 'pc_type': 'hypre', 'pc_hypre_type': 'ams', 'pc_hypre_ams_cycle_type': 7, 'pc_hypre_ams_relax_times': 2, **conv_sets, **self.solver_settings}
-        petsc_options={'ksp_type': 'fgmres', 'pc_type': 'ksp', **conv_sets, **self.solver_settings}
+        petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', **conv_sets, **self.solver_settings}
         #petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'ilu', 'pc_factor_levels': 3, **conv_sets, **self.solver_settings}
         
         cache_dir = f"{str(Path.cwd())}/.cache"
