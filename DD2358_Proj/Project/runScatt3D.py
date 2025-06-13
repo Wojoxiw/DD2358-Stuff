@@ -221,7 +221,7 @@ if __name__ == '__main__':
         maxTime = 100 ## max solver time in [s], to cut off overly-long runs. Is only checked between iterations, some of which can take minutes...
         
         for flvls in [1, 2, 3, 5]:
-            for dfill in [0, 1e-6, 1e-3, .1, .6, 1]:
+            for dfill in [0, 1]:
                 for ffill in [1, 1.4, 2, 3, 6]:
                     settings.append( {"pc_factor_levels": flvls, "pc_factor_diagonal_fill": dfill, "pc_factor_fill": ffill} )
         num = len(settings)
