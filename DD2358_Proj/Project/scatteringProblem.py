@@ -352,13 +352,13 @@ class Scatt3DProblem():
         max_its = 10000
         conv_sets = {"ksp_rtol": 1e-6, "ksp_atol": 1e-15, "ksp_max_it": max_its} ## convergence settings
         #petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps", "mat_mumps_icntl_7": 1} ## the basic option - fast, robust/accurate, but takes a lot of memory. try the last option for ordering?
-        petsc_options={"ksp_type": "lgmres", "pc_type": "sor", **self.solver_settings, **conv_sets} ## (https://petsc.org/release/manual/ksp/)
+        #petsc_options={"ksp_type": "lgmres", "pc_type": "sor", **self.solver_settings, **conv_sets} ## (https://petsc.org/release/manual/ksp/)
         #petsc_options={"ksp_type": "lgmres", 'pc_type': 'asm', 'sub_pc_type': 'sor', **conv_sets} ## is okay
         #petsc_options={**conv_sets, **self.solver_settings}
         #petsc_options={"ksp_type": "lgmres", "pc_type": "ksp", "pc_ksp_type":"gmres", 'ksp_max_it': 1, 'pc_ksp_rtol' : 1e-1, "pc_ksp_pc_type": "sor", **conv_sets}
         #petsc_options={'ksp_type': 'gmres', 'pc_type': 'hypre', 'pc_hypre_type': 'ams', 'pc_hypre_ams_cycle_type': 7, 'pc_hypre_ams_relax_times': 2, **conv_sets, **self.solver_settings}
         #petsc_options={'ksp_type': 'fgmres', 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 100, "ksp_pc_type": 'sor', **conv_sets, **self.solver_settings}
-        #petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 150, 'pc_type': 'hypre', 'pc_hypre_type': 'spai', **conv_sets, **self.solver_settings}
+        petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'ilu', **conv_sets, **self.solver_settings}
         
         cache_dir = f"{str(Path.cwd())}/.cache"
         jit_options={}
