@@ -218,12 +218,12 @@ if __name__ == '__main__':
     def testSolverSettings(h = 1/12): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         settings = [] ## list of solver settings
-        maxTime = 100 ## max solver time in [s], to cut off overly-long runs. Is only checked between iterations, some of which can take minutes...
+        maxTime = 200 ## max solver time in [s], to cut off overly-long runs. Is only checked between iterations, some of which can take minutes...
         
-        for flvls in [1, 2, 3, 5]:
-            for dfill in [0, 1]:
-                for ffill in [1, 1.4, 2, 3, 6]:
-                    settings.append( {"pc_factor_levels": flvls, "pc_factor_diagonal_fill": dfill, "pc_factor_fill": ffill} )
+        for inksp in ['bcgs', 'gmres', 'tfqmr']:
+            for its in [10, 25, 50, 100, 200, 500]:
+                for pc in ['sor', 'jacobi']:
+                    settings.append( {"ksp_ksp_type": inksp, "ksp_ksp_max_it": its, "ksp_pc_type": pc} )
         num = len(settings)
         
         #=======================================================================
@@ -274,7 +274,7 @@ if __name__ == '__main__':
         
         fig.tight_layout()
         fig.tight_layout() ## need both of these for some reason
-        plt.savefig(prob.dataFolder+prob.name+'gmres+ilu_solversettingsplot.png')
+        plt.savefig(prob.dataFolder+prob.name+'fmres+innerksp_solversettingsplot.png')
         plt.show()
         
     #testRun(h=1/20)
