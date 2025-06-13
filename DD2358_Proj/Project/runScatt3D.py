@@ -53,7 +53,7 @@ import postProcessing
 if __name__ == '__main__':
     # MPI settings
     comm = MPI.COMM_WORLD
-    model_rank = 0
+    model_rank = 0 ## rank for printing and definitions, etc.
     verbosity = 2 ## 3 will print everything. 2, most things. 1, just the main process stuff.
     MPInum = comm.size
     
@@ -239,7 +239,8 @@ if __name__ == '__main__':
         its = np.zeros(num)
         norms = np.zeros(num)
         for i in range(num):
-            print('\033[94m'+f'Run {i} with settings:',settings[i],'\033[0m')
+            if(comm.rank == model_rank):
+                print('\033[94m'+f'Run {i} with settings:',settings[i],'\033[0m')
             prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0, fem_degree=1, solver_settings=settings[i], max_solver_time=maxTime)
             ts[i] = prob.calcTime
             its[i] = prob.solver_its
@@ -285,7 +286,7 @@ if __name__ == '__main__':
     #convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    testSolverSettings(h=1/4)
+    testSolverSettings(h=1/10)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):

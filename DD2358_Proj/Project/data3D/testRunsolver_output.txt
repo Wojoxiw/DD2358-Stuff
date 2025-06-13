@@ -1,20 +1,25 @@
-KSP Object: (dolfinx_solve_127178990040272) 64 MPI processes
-  type: lgmres
-    restart=30, using Classical (unmodified) Gram-Schmidt Orthogonalization with no iterative refinement
+KSP Object: (dolfinx_solve_123184382013616) 1 MPI process
+  type: gmres
+    restart=250, using Classical (unmodified) Gram-Schmidt Orthogonalization with no iterative refinement
     happy breakdown tolerance 1e-30
-    aug. dimension=4
-    number of matvecs=649
   maximum iterations=10000, initial guess is zero
-  tolerances: relative=0.001, absolute=1e-06, divergence=10000.
+  tolerances: relative=1e-06, absolute=1e-15, divergence=10000.
   left preconditioning
   using PRECONDITIONED norm type for convergence test
-PC Object: (dolfinx_solve_127178990040272) 64 MPI processes
-  type: sor
-    type = local_symmetric, iterations = 1, local iterations = 1, omega = 0.8
+PC Object: (dolfinx_solve_123184382013616) 1 MPI process
+  type: hypre
+    HYPRE ParaSails preconditioning
+      nlevels 2
+      threshold 0.01
+      filter -0.2
+      load balance 0.
+      reuse nonzero structure FALSE
+      print info to screen FALSE
+      nonsymmetric matrix and preconditioner
   linear system matrix = precond matrix:
-  Mat Object: (dolfinx_solve_127178990040272) 64 MPI processes
-    type: mpiaij
-    rows=10635, cols=10635
-    total: nonzeros=161703, allocated nonzeros=161703
+  Mat Object: (dolfinx_solve_123184382013616) 1 MPI process
+    type: seqaij
+    rows=6689, cols=6689
+    total: nonzeros=100805, allocated nonzeros=100805
     total number of mallocs used during MatSetValues calls=0
-      not using I-node (on process 0) routines
+      not using I-node routines

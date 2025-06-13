@@ -507,7 +507,7 @@ class Scatt3DProblem():
             self.S_dut, self.solutions_dut = ComputeFields()
             
         solver = problem.solver
-        fname=self.dataFolder+self.name+"solver_output.txt"
+        fname=self.dataFolder+self.name+"solver_output.info"
         viewer = PETSc.Viewer().createASCII(fname)
         solver.view(viewer)
         self.solver_its = solver.its
