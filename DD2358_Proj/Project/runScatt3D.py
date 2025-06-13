@@ -222,8 +222,8 @@ if __name__ == '__main__':
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         settings = [] ## list of solver settings
         maxTime = 10 ## max solver time in [s], to cut off overly-long runs
-        for omega in np.linspace(0,2,1001):
-            settings.append( {"pc_sor_omega": omega} )
+        for omega in [0, 1, 2, 3, 4, 5, 9]:
+            settings.append( {"ksp_lgmres_augment": omega} )
         num = len(settings)
         
         #=======================================================================
@@ -232,7 +232,7 @@ if __name__ == '__main__':
         # exit()
         #=======================================================================
         
-        omegas = np.linspace(0,2,1001) #np.arange(num) ## Number of the setting being varied, if it is not a numerical quantity
+        omegas = np.arange(num) ## Number of the setting being varied, if it is not a numerical quantity
         ts = np.zeros(num)
         its = np.zeros(num)
         norms = np.zeros(num)
@@ -273,7 +273,7 @@ if __name__ == '__main__':
         ax1.legend(handles=[l1, l2, l3])
         
         fig.tight_layout()
-        plt.savefig(prob.dataFolder+prob.name+'pc_sor_omega_solversettingsplot.png')
+        plt.savefig(prob.dataFolder+prob.name+'ksp_lgmres_augment_solversettingsplot.png')
         plt.show()
         
     #testRun(h=1/20)
