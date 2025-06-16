@@ -44,7 +44,7 @@ class Scatt3DProblem():
                  mur_bkg=1,           # Permeability of the background medium
                  material_epsr=3.0*(1 - 0.01j),  # Permittivity of object
                  material_mur=1+0j,   # Permeability of object
-                 defect_epsr=5.5*(1 - 0.01j),      # Permittivity of defect
+                 defect_epsr=3.5*(1 - 0.01j),      # Permittivity of defect
                  defect_mur=1+0j,       # Permeability of defect
                  fem_degree=1,            # Degree of finite elements
                  model_rank=0,        # Rank of the master model - for saving, plotting, etc.
@@ -356,7 +356,7 @@ class Scatt3DProblem():
         #petsc_options={"ksp_type": "lgmres", 'pc_type': 'asm', 'sub_pc_type': 'sor', **conv_sets} ## is okay
         #petsc_options={**conv_sets, **self.solver_settings}
         #petsc_options={"ksp_type": "lgmres", "pc_type": "ksp", "pc_ksp_type":"gmres", 'ksp_max_it': 1, 'pc_ksp_rtol' : 1e-1, "pc_ksp_pc_type": "sor", **conv_sets}
-        petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'tfqmr', "ksp_ksp_max_it": 100, 'ksp_pc_type': 'jacobi', **conv_sets, **self.solver_settings} ## best so far... tfqmr or bcgs
+        petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 100, 'ksp_pc_type': 'jacobi', **conv_sets, **self.solver_settings} ## best so far... tfqmr or bcgs
         #petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'ilu', 'pc_factor_levels': 3, **conv_sets, **self.solver_settings}
         
         cache_dir = f"{str(Path.cwd())}/.cache"
@@ -368,24 +368,24 @@ class Scatt3DProblem():
         ksp = problem.solver
         pc = ksp.getPC()
         time1 = timer()
-        if(self.max_solver_time>0):
-            class TimeAbortMonitor:
-                def __init__(self, max_time, comm):
-                    self.timeout = max_time
-                    self.start_time = timer()
-                    self.comm = comm
-                
-                def __call__(self, ksp, its, rnorm):
+        
+        class TimeAbortMonitor:
+            def __init__(self, max_time, comm):
+                self.maxT = max_time
+                self.start_time = timer()
+                self.comm = comm
+            
+            def __call__(self, ksp, its, rnorm):
+                if(self.comm.rank == 0):
+                    if(its%101 == 100): ## print some progress, in case a run is taking extremely long
+                        print(f'Solver {its} its in, norm {rnorm:.3e}...')
+                if (self.maxT>0) and (timer() - self.start_time > self.maxT): ## if using a max time, call out when it is reached
                     if(self.comm.rank == 0):
-                        if(its%101 == 100):
-                            print(f'Solver {its} in, norm {rnorm:.3e}...')
-                    if timer() - self.start_time > self.timeout:
-                        if(self.comm.rank == 0):
-                            PETSc.Sys.Print(f"Aborting solve after {its} iterations due to timeout.")
-                        ksp.setConvergedReason(PETSc.KSP.ConvergedReason.DIVERGED_NULL)
+                        PETSc.Sys.Print(f"Aborting solve after {its} iterations due to maximum solver time ({self.maxT} s).")
+                    ksp.setConvergedReason(PETSc.KSP.ConvergedReason.DIVERGED_NULL)
                     
                         
-            ksp.setMonitor(TimeAbortMonitor(self.max_solver_time, self.comm))
+        ksp.setMonitor(TimeAbortMonitor(self.max_solver_time, self.comm))
         
         #=======================================================================
         # def monitor(ksp, its, rnorm):
