@@ -356,8 +356,7 @@ class Scatt3DProblem():
         #petsc_options={"ksp_type": "lgmres", 'pc_type': 'asm', 'sub_pc_type': 'sor', **conv_sets} ## is okay
         #petsc_options={**conv_sets, **self.solver_settings}
         #petsc_options={"ksp_type": "lgmres", "pc_type": "ksp", "pc_ksp_type":"gmres", 'ksp_max_it': 1, 'pc_ksp_rtol' : 1e-1, "pc_ksp_pc_type": "sor", **conv_sets}
-        petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 100, 'ksp_pc_type': 'jacobi', **conv_sets, **self.solver_settings}
-        #petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 200, "ksp_pc_type": 'sor', **conv_sets, **self.solver_settings} ## best so far
+        petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'tfqmr', "ksp_ksp_max_it": 100, 'ksp_pc_type': 'jacobi', **conv_sets, **self.solver_settings} ## best so far... tfqmr or bcgs
         #petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'ilu', 'pc_factor_levels': 3, **conv_sets, **self.solver_settings}
         
         cache_dir = f"{str(Path.cwd())}/.cache"
@@ -379,7 +378,7 @@ class Scatt3DProblem():
                 def __call__(self, ksp, its, rnorm):
                     if(self.comm.rank == 0):
                         if(its%101 == 100):
-                            print(f'Solver {its} in...')
+                            print(f'Solver {its} in, norm {rnorm:.3e}...')
                     if timer() - self.start_time > self.timeout:
                         if(self.comm.rank == 0):
                             PETSc.Sys.Print(f"Aborting solve after {its} iterations due to timeout.")
