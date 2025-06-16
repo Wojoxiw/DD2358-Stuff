@@ -275,17 +275,17 @@ if __name__ == '__main__':
         fig.tight_layout()
         fig.tight_layout() ## need both of these for some reason
         plt.savefig(prob.dataFolder+prob.name+'fmres+innerksp_solversettingsplot.png')
-        #plt.show()
+        plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testRun2(h=1/10)
-    #testSphereScattering(h=1/4, fem_degree=1, showPlots=True)
+    testSphereScattering(h=1/25, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    testSolverSettings(h=1/25)
+    #testSolverSettings(h=1/25)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
