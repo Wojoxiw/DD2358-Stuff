@@ -99,13 +99,13 @@ if __name__ == '__main__':
         #prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
         
-    def testRun2(h = 1/15): ## Testing toward postprocessing stuff
+    def testFullExample(h = 1/15, degree = 1): ## Testing toward a full example, including postprocessing stuff
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=5)
-        dutMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = False, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=5)
-        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
+        refMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = True, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=4, order=degree)
+        dutMesh = meshMaker.MeshData(comm, folder+runName+'mesh.msh', reference = False, viewGMSH = False, verbosity = verbosity, h=h, N_antennas=4, order=degree)
+        #prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         #refMesh.plotMeshPartition()
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, DUTMeshdata=dutMesh, computeBoth=True, verbosity = verbosity, MPInum = MPInum, name = runName, Nf = 6)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, DUTMeshdata=dutMesh, computeBoth=True, verbosity = verbosity, MPInum = MPInum, name = runName, Nf = 2, fem_degree=degree)
         prob.saveEFieldsForAnim()
         prevRuns.memTimeAppend(prob)
         postProcessing.testSVD(prob.dataFolder+prob.name)
@@ -113,7 +113,7 @@ if __name__ == '__main__':
     def testSphereScattering(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', order=fem_degree, object_geom='sphere', FF_surface = True)
-        prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
+        #prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
         prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=True, excitation='planewave', freqs = freqs, material_epsr=2.0*(1 - 0.01j), fem_degree=fem_degree)
         #prob.saveDofsView(prob.refMeshdata)
@@ -121,11 +121,11 @@ if __name__ == '__main__':
         if(showPlots):
             prob.calcNearField(direction='side')
         prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots, returnConvergenceVals=False)
-        #prevRuns.memTimeAppend(prob)
+        prevRuns.memTimeAppend(prob)
  
     def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(4, 32, 7)
+            ks = np.linspace(4, 20, 7)
         elif(convergence == 'pmlR0'): ## result of this is that the value must be below 1e-2, from there further reduction matches the forward-scattering better, the back-scattering less
             ks = np.linspace(2, 15, 10)
             ks = 10**(-ks)
@@ -181,7 +181,6 @@ if __name__ == '__main__':
                 i=2
             
             while i<3: ## just to do the multiple plots
-                i+=1
                 fig1 = plt.figure()
                 ax1 = plt.subplot(1, 1, 1)
                 ax1.grid(True)
@@ -190,40 +189,45 @@ if __name__ == '__main__':
                 if(convergence == 'meshsize'):
                     if(i==0):
                         ax1.set_xlabel(r'Inverse mesh size ($\lambda / h$)')
+                        idx = np.argsort(-ks)
                     elif(i==1):
                         ax1.set_xlabel(r'Calculation Time [s]')
                         ks = calcT
+                        idx = np.argsort(ks)
                     else:
                         ax1.set_xlabel(r'# of dofs')
                         ks = ndofs
+                        idx = np.argsort(ks)
                 elif(convergence == 'pmlR0'):
                     ax1.set_xlabel(r'R0')
                     ax1.set_xscale('log')
                 elif(convergence == 'dxquaddeg'):
                     ax1.set_xlabel(r'dx Quadrature Degree')
                 
-                ax1.plot(ks, np.abs((real_area-areaVals)/real_area), marker='o', linestyle='--', label = r'area - rel. error')
-                ax1.plot(ks, khatMaxErrs, marker='o', linestyle='--', label = r'khat integral - max. abs. error')
-                ax1.plot(ks, khatRmsErrs, marker='o', linestyle='--', label = r'khat integral - RMS error')
-                ax1.plot(ks, FFrmsRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
-                ax1.plot(ks, FFrmsveryRelErrs, marker='o', linestyle='--', label = r'Farfield cuts RMS. veryrel. error')
-                ax1.plot(ks, FFforwardrelErr, marker='o', linestyle='--', label = r'Farfield forward rel. error')
+                ax1.plot(ks[idx], np.abs((real_area-areaVals)/real_area)[idx], marker='o', linestyle='--', label = r'area - rel. error')
+                ax1.plot(ks[idx], khatMaxErrs[idx], marker='o', linestyle='--', label = r'khat integral - max. abs. error')
+                ax1.plot(ks[idx], khatRmsErrs[idx], marker='o', linestyle='--', label = r'khat integral - RMS error')
+                ax1.plot(ks[idx], FFrmsRelErrs[idx], marker='o', linestyle='--', label = r'Farfield cuts RMS rel. error')
+                ax1.plot(ks[idx], FFrmsveryRelErrs[idx], marker='o', linestyle='--', label = r'Farfield cuts RMS. veryrel. error')
+                ax1.plot(ks[idx], FFforwardrelErr[idx], marker='o', linestyle='--', label = r'Farfield forward rel. error')
                 
                 ax1.set_yscale('log')
                 ax1.legend()
                 fig1.tight_layout()
-                plt.savefig(prob.dataFolder+prob.name+convergence+'clustermeshconvergence.png')
-                plt.show()
+                plt.savefig(prob.dataFolder+prob.name+convergence+'clustermeshconvergence'+i+'.png')
+                i+=1
+                if(MPInum == 1):
+                    plt.show()
             
     def testSolverSettings(h = 1/12): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
         refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         settings = [] ## list of solver settings
-        maxTime = 200 ## max solver time in [s], to cut off overly-long runs. Is only checked between iterations, some of which can take minutes...
+        maxTime = 600 ## max solver time in [s], to cut off overly-long runs. Is only checked between iterations, some of which can take minutes...
         
-        for inksp in ['bcgs', 'gmres', 'tfqmr']:
-            for its in [10, 25, 50, 100, 200, 500]:
-                for pc in ['sor', 'jacobi']:
-                    settings.append( {"ksp_ksp_type": inksp, "ksp_ksp_max_it": its, "ksp_pc_type": pc} )
+        for eql in [400, 650, 1000, 1500, 2000]:
+            for nsmooths in [1, 2, 3]:
+                for thresh in [0.005, 0.01, 0.02, 0.05, 0.1, 0.15]:
+                    settings.append( {"pc_gamg_coarse_eq_limit": eql, "pc_gamg_agg_nsmooths": nsmooths, "pc_gamg_threshold": thresh} )
         num = len(settings)
         
         #=======================================================================
@@ -274,18 +278,18 @@ if __name__ == '__main__':
         
         fig.tight_layout()
         fig.tight_layout() ## need both of these for some reason
-        plt.savefig(prob.dataFolder+prob.name+'fmres+innerksp_solversettingsplot.png')
+        plt.savefig(prob.dataFolder+prob.name+'gamg+agg_solversettingsplot.png')
         plt.show()
         
     #testRun(h=1/20)
     #profilingMemsTimes()
     #actualProfilerRunning()
-    #testRun2(h=1/10)
-    #testSphereScattering(h=1/4, fem_degree=1, showPlots=True)
+    #testFullExample(h=1/5)
+    #testSphereScattering(h=1/10, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
-    convergenceTestPlots('meshsize')
+    #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    #testSolverSettings(h=1/25)
+    testSolverSettings(h=1/15)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):

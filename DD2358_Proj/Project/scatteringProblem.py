@@ -17,6 +17,8 @@ import memTimeEstimation
 from pathlib import Path
 from matplotlib import pyplot as plt
 from matplotlib.collections import _MeshData
+import miepython
+import miepython.field
 eta0 = np.sqrt(mu0/eps0)
 
 #===============================================================================
@@ -50,7 +52,7 @@ class Scatt3DProblem():
                  model_rank=0,        # Rank of the master model - for saving, plotting, etc.
                  MPInum = 1,          # Number of MPI processes
                  freqs = [],          # Optionally, pass in the exact frequencies to calculate  
-                 Nf = 1,              # Number of frequency-points to calculate
+                 Nf = 10,              # Number of frequency-points to calculate
                  BW = 4e9,              # Bandwidth (equally spaced around f0)
                  dataFolder = 'data3D/', # Folder where data is stored
                  name = 'testRun', # Name of this particular simulation
@@ -123,8 +125,10 @@ class Scatt3DProblem():
         # Calculate solutions
         if(computeImmediately):
             if(computeBoth): ## compute both cases, then opt vectors if asked for
-                self.compute(True, makeOptVects=False)
-                self.compute(False, makeOptVects=self.makeOptVects)
+                self.compute(False, makeOptVects=False)
+                self.makeOptVectors(True) ## makes an xdmf of the DUT mesh/epsrs
+                self.saveDofsView(self.DUTMeshdata) ## to see that all groups are assigned appropriately
+                self.compute(True, makeOptVects=self.makeOptVects)
             else: ## just compute the ref case, and make opt vects if asked for
                 self.compute(computeRef, makeOptVects=self.makeOptVects)
             
@@ -149,7 +153,7 @@ class Scatt3DProblem():
         #self.ComputeSolutions(meshData, computeRef=True)
         self.calcTime = timer()-t1 ## Time it took to solve the problem. Given to mem-time estimator 
         if(makeOptVects):
-            self.makeOptVectors(meshData)
+            self.makeOptVectors()
         
         if(self.verbosity > 2):
             print(f'Max. memory: {mem_usage:.3f} GiB -- '+f"{self.comm.rank=} {self.comm.size=}")
@@ -192,6 +196,8 @@ class Scatt3DProblem():
                         cells.append(cell)
             cells.sort()
             self.farfield_cells = np.array(cells)
+        else:
+            self.farfield_cells = []
         
     def InitializeMaterial(self, meshData):
         # Set up material parameters. Not chancing mur for now, need to edit this if doing so
@@ -351,13 +357,13 @@ class Scatt3DProblem():
         lhs, rhs = ufl.lhs(F), ufl.rhs(F)
         max_its = 10000
         conv_sets = {"ksp_rtol": 1e-6, "ksp_atol": 1e-15, "ksp_max_it": max_its} ## convergence settings
-        #petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory. try the last option for ordering?
+        petsc_options = {"ksp_type": "preonly", "pc_type": "lu", "pc_factor_mat_solver_type": "mumps"} ## the basic option - fast, robust/accurate, but takes a lot of memory. try the last option for ordering?
         #petsc_options={"ksp_type": "lgmres", "pc_type": "sor", **self.solver_settings, **conv_sets} ## (https://petsc.org/release/manual/ksp/)
         #petsc_options={"ksp_type": "lgmres", 'pc_type': 'asm', 'sub_pc_type': 'sor', **conv_sets} ## is okay
         #petsc_options={**conv_sets, **self.solver_settings}
         #petsc_options={"ksp_type": "lgmres", "pc_type": "ksp", "pc_ksp_type":"gmres", 'ksp_max_it': 1, 'pc_ksp_rtol' : 1e-1, "pc_ksp_pc_type": "sor", **conv_sets}
-        petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 100, 'ksp_pc_type': 'jacobi', **conv_sets, **self.solver_settings} ## best so far... tfqmr or bcgs
-        #petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'ilu', 'pc_factor_levels': 3, **conv_sets, **self.solver_settings}
+        #petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 100, 'ksp_pc_type': 'jacobi', **conv_sets, **self.solver_settings} ## best so far... tfqmr or bcgs
+        petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'gamg', 'pc_gamg_type': 'agg', 'pc_gamg_sym_graph': 1, 'matptap_via': 'scalable', 'pc_gamg_square_graph': 1, 'pc_gamg_reuse_interpolation': 1, **conv_sets, **self.solver_settings}
         
         cache_dir = f"{str(Path.cwd())}/.cache"
         jit_options={}
@@ -378,7 +384,7 @@ class Scatt3DProblem():
             def __call__(self, ksp, its, rnorm):
                 if(self.comm.rank == 0):
                     if(its%101 == 100): ## print some progress, in case a run is taking extremely long
-                        print(f'Solver {its} its in, norm {rnorm:.3e}...')
+                        print(f'Iteration {its}, norm {rnorm:.3e}...')
                 if (self.maxT>0) and (timer() - self.start_time > self.maxT): ## if using a max time, call out when it is reached
                     if(self.comm.rank == 0):
                         PETSc.Sys.Print(f"Aborting solve after {its} iterations due to maximum solver time ({self.maxT} s).")
@@ -386,6 +392,12 @@ class Scatt3DProblem():
                     
                         
         ksp.setMonitor(TimeAbortMonitor(self.max_solver_time, self.comm))
+        
+        #=======================================================================
+        # nullspace = PETSc.NullSpace().create(constant=True)  # type: ignore
+        # PETSc.Mat.setNearNullSpace(problem.A, nullspace)
+        #=======================================================================
+        
         
         #=======================================================================
         # def monitor(ksp, its, rnorm):
@@ -523,18 +535,26 @@ class Scatt3DProblem():
                 solver_output = open(fname, "r") ## this prints to console
                 for line in solver_output.readlines():
                     print(line)
+            sys.stdout.flush()
            
     #@profile
-    def makeOptVectors(self, meshData):
+    def makeOptVectors(self, DUTMesh=False):
         '''
         Computes the optimization vectors from the E-fields and saves to .xdmf - this is done on the reference mesh.
-        This function also saves various other parameters for later postprocessing
+        This function also saves various other parameters needed for later postprocessing
+        :param meshData: Should be the refMeshData, since that is what the reconstruction is on. If justMesh, can be the DUT mesh
+        :param justMesh: No optimization vectors, just cell volumes and epsrs
         '''
+        if(DUTMesh):
+            meshData = self.DUTMeshdata
+            xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'DUTmesh.xdmf', file_mode='w')
+        else:
+            meshData = self.refMeshdata
+            xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'output-qs.xdmf', file_mode='w')
         
         if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) ):
             print(f'Rank {self.comm.rank}: Computing optimization vectors')
             sys.stdout.flush()
-        
         
         # Create function space for temporary interpolation
         q = dolfinx.fem.Function(self.Wspace)
@@ -559,8 +579,6 @@ class Scatt3DProblem():
             En_vals = En.eval(x.T, cells)
             values = -1j*k0/eta0/2*(Em_vals[:,0]*En_vals[:,0] + Em_vals[:,1]*En_vals[:,1] + Em_vals[:,2]*En_vals[:,2])*cell_volumes
             return values
-        
-        xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'output-qs.xdmf', file_mode='w')
         xdmf.write_mesh(meshData.mesh)
         self.epsr.x.array[:] = cell_volumes
         xdmf.write_function(self.epsr, -3)
@@ -568,35 +586,36 @@ class Scatt3DProblem():
         xdmf.write_function(self.epsr, -2)
         self.epsr.x.array[:] = self.epsr_array_dut
         xdmf.write_function(self.epsr, -1)
-        b = np.zeros(self.Nf*meshData.N_antennas*meshData.N_antennas, dtype=complex)
-        for nf in range(self.Nf):
-            if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) and (meshData.N_antennas > 0) ):
-                print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
-                sys.stdout.flush()
-            k0 = 2*np.pi*self.fvec[nf]/c0
-            for m in range(meshData.N_antennas):
-                Em_ref = self.solutions_ref[nf][m]
-                for n in range(meshData.N_antennas):
-                    if(self.ErefEdut): ## only using Eref*Eref right now. This should provide a superior reconstruction with fully simulated data, though
-                        En = self.solutions_dut[nf][n] 
-                    else:
-                        En = self.solutions_ref[nf][n]
-                    q.interpolate(functools.partial(q_func, Em=Em_ref, En=En, k0=k0))
-                    # The function q is one row in the A-matrix, save it to file
-                    xdmf.write_function(q, nf*meshData.N_antennas*meshData.N_antennas + m*meshData.N_antennas + n)
-            if(meshData.N_antennas < 1): # if no antennas, still save
-                q.interpolate(functools.partial(q_func, Em=self.solutions_ref[nf][0], En=self.solutions_ref[nf][0], k0=k0))
-                xdmf.write_function(q, nf)
-        xdmf.close()
-        
-        if (self.comm.rank == self.model_rank): # Save global values for further postprocessing
-            if( hasattr(self, 'solutions_dut') and hasattr(self, 'solutions_ref')): ## need both computed - otherwise, do not save
-                b = np.zeros(self.Nf*meshData.N_antennas*meshData.N_antennas, dtype=complex) ## the array of S-parameters
-                for nf in range(self.Nf):
-                    for m in range(meshData.N_antennas):
-                        for n in range(meshData.N_antennas):
-                            b[nf*meshData.N_antennas*meshData.N_antennas + m*meshData.N_antennas + n] = self.S_dut[nf, m, n] - self.S_ref[nf, n, m]
-                np.savez(self.dataFolder+self.name+'output.npz', b=b, fvec=self.fvec, S_ref=self.S_ref, S_dut=self.S_dut, epsr_mat=self.material_epsr, epsr_defect=self.defect_epsr, N_antennas=meshData.N_antennas)     
+        if(not DUTMesh):
+            b = np.zeros(self.Nf*meshData.N_antennas*meshData.N_antennas, dtype=complex)
+            for nf in range(self.Nf):
+                if( (self.verbosity > 0 and self.comm.rank == self.model_rank) or (self.verbosity > 2) and (meshData.N_antennas > 0) ):
+                    print(f'Rank {self.comm.rank}: Frequency {nf+1} / {self.Nf}')
+                    sys.stdout.flush()
+                k0 = 2*np.pi*self.fvec[nf]/c0
+                for m in range(meshData.N_antennas):
+                    Em_ref = self.solutions_ref[nf][m]
+                    for n in range(meshData.N_antennas):
+                        if(self.ErefEdut): ## only using Eref*Eref right now. Eref*Edut should provide a superior reconstruction with fully simulated data, though
+                            En = self.solutions_dut[nf][n] 
+                        else:
+                            En = self.solutions_ref[nf][n]
+                        q.interpolate(functools.partial(q_func, Em=Em_ref, En=En, k0=k0))
+                        # The function q is one row in the A-matrix, save it to file
+                        xdmf.write_function(q, nf*meshData.N_antennas*meshData.N_antennas + m*meshData.N_antennas + n)
+                if(meshData.N_antennas < 1): # if no antennas, still save something
+                    q.interpolate(functools.partial(q_func, Em=self.solutions_ref[nf][0], En=self.solutions_ref[nf][0], k0=k0))
+                    xdmf.write_function(q, nf)
+            xdmf.close()
+            
+            if (self.comm.rank == self.model_rank): # Save global values for further postprocessing
+                if( hasattr(self, 'solutions_dut') and hasattr(self, 'solutions_ref')): ## need both computed - otherwise, do not save
+                    b = np.zeros(self.Nf*meshData.N_antennas*meshData.N_antennas, dtype=complex) ## the array of S-parameters
+                    for nf in range(self.Nf):
+                        for m in range(meshData.N_antennas):
+                            for n in range(meshData.N_antennas):
+                                b[nf*meshData.N_antennas*meshData.N_antennas + m*meshData.N_antennas + n] = self.S_dut[nf, m, n] - self.S_ref[nf, n, m]
+                    np.savez(self.dataFolder+self.name+'output.npz', b=b, fvec=self.fvec, S_ref=self.S_ref, S_dut=self.S_dut, epsr_mat=self.material_epsr, epsr_defect=self.defect_epsr, N_antennas=meshData.N_antennas)     
     
     def saveEFieldsForAnim(self, Nframes = 50, removePML = True):
         '''
@@ -642,6 +661,7 @@ class Scatt3DProblem():
         xdmf.close()
         if(self.verbosity>0 & self.comm.rank == self.model_rank):
             print(self.name+' E-fields animation complete')
+            sys.stdout.flush()
         
     def saveDofsView(self, meshData):
         '''
@@ -653,7 +673,7 @@ class Scatt3DProblem():
         vals = dolfinx.fem.Function(self.Wspace)
         xdmf = dolfinx.io.XDMFFile(comm=self.comm, filename=self.dataFolder+self.name+'Dofsview.xdmf', file_mode='w')
         xdmf.write_mesh(meshData.mesh)
-        pec_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.fdim, entities=meshData.boundaries.find(meshData.pec_surface_marker)) ## to use Wspace instead of Vspace... maybe this matters
+        pec_dofs = dolfinx.fem.locate_dofs_topological(self.Wspace, entity_dim=self.fdim, entities=meshData.boundaries.find(meshData.pec_surface_marker)) ## should be empty since these surfaces are not 3D, I think
         vals.x.array[:] = np.nan
         vals.x.array[self.domain_dofs] = 0
         vals.x.array[self.pml_dofs] = -1
@@ -766,20 +786,16 @@ class Scatt3DProblem():
                     print(f'khat calc first angle (should be zero): {np.abs(khatResults[0]):.5e}')
                     print(f'Farfield-surface area, calculated vs real (expected): {np.abs(areaResult)} vs {real_area}. Error: {np.abs(areaResult-real_area):.3e}, rel. error: {np.abs((areaResult-real_area)/real_area):.3e}')
                       
-                if(self.MPInum == 1): ## Presumably clsuter runs should have MPInum > 1    
-                    import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                    mies = np.zeros_like(angles[:, 1])
-                    lambdat = c0/freq
-                    x = 2*pi*meshData.object_radius/lambdat
-                    for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-                        if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
-                            mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
-                        else: ## if not, we are changing theta angles and in the parallel plane
-                            mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
-                    np.savetxt('miestest.out', mies)
-                
-                mies = np.loadtxt('miestest.out') ## data for certain object properties
+                m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                mies = np.zeros_like(angles[:, 1])
+                lambdat = c0/freq
+                x = 2*pi*meshData.object_radius/lambdat
+                for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                    if(angles[i, 0] == 90): ## if theta=90, then this is H-plane/perpendicular
+                        mies[i] = miepython.i_per(m, x, np.cos((angles[i, 1]*pi/180+pi)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                    else: ## if not, we are changing theta angles and in the parallel plane
+                        mies[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180-pi/2)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
+                        
                 vals = areaResult, khatResults, farfields, mies # [FF surface area, khat integral], scattering along planes, mie intensities in the scattering directions
                 return vals
             else: ## for non-main processes, just return zeros
@@ -802,19 +818,15 @@ class Scatt3DProblem():
                     
                     ##Calculate Mie scattering
                     lambdat = c0/freq
-                    if(self.MPInum == 1): ## Presumably clsuter runs should have MPInum > 1
-                        import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-                        m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
-                        mie = np.zeros_like(angles[:, 1])
-                        x = 2*pi*meshData.object_radius/lambdat
-                        for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
-                            if(angles[i, 1] == 90): ## if theta=90, then this is H-plane/perpendicular
-                                mie[i] = miepython.i_per(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
-                            else: ## if not, we are changing theta angles and in the parallel plane
-                                mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
-                        np.savetxt('mietest.out', mie)
+                    m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
+                    mie = np.zeros_like(angles[:, 1])
+                    x = 2*pi*meshData.object_radius/lambdat
+                    for i in range(nvals*2): ## get a miepython error if I use a vector of x, so:
+                        if(angles[i, 1] == 90): ## if theta=90, then this is H-plane/perpendicular
+                            mie[i] = miepython.i_per(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi since it seems backwards => forwards
+                        else: ## if not, we are changing theta angles and in the parallel plane
+                            mie[i] = miepython.i_par(m, x, np.cos((angles[i, 0]*pi/180)), norm='qsca')*pi*meshData.object_radius**2 ## +pi/2 since it seems backwards => forwards
                     
-                    mie = np.loadtxt('mietest.out') ## data for some object properties
                     ax1.plot(angles[:nvals, 0], mie[:nvals], label = 'Miepython (H-plane)', linewidth = 1.2, color = 'blue', linestyle = '--') ## first part should be H-plane ## -180 so 0 is the forward direction
                     ax1.plot(angles[nvals:, 0], mie[nvals:], label = 'Miepython (E-plane)', linewidth = 1.2, color = 'red', linestyle = '--') ## -90 so 0 is the forward direction
                     plt.title(f'Scattered E-field Intensity Comparison ($\lambda/h=${lambdat/meshData.h:.1f})')
@@ -945,8 +957,7 @@ class Scatt3DProblem():
         ###############
         E_values = self.solutions_ref[0][0].eval(points_on_proc, cells) ## less/non-interpolated
         E_values2 = np.hstack((Ex.eval(points_on_proc, cells), Ey.eval(points_on_proc, cells), Ez.eval(points_on_proc, cells))) ## interpolated... this helps smooth for elements of order 1. not used...
-        import miepython ## this shouldn't need to be installed on the cluster (I can't figure out how to) so only import it here
-        import miepython.field
+        
         m = np.sqrt(self.material_epsr) ## complex index of refraction - if it is not PEC
         freq = self.fvec[0]
         lambdat = c0/freq

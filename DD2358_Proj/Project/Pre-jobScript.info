@@ -32,6 +32,12 @@ spack env deactivate
 spack env activate Scatt3D
 ## Must reactivate environment afterwards, or I get some libfabric 1.8 error
 ## May get an error on libpressio or other packages - try adding it with the above flags, then spack concretize --force, then install again
+## Then install miepython (not sure if this can be done with the previous steps)
+spack install py-pip
+spack load py-pip
+pip install miepython
+
+
 
 Once stuff is installed, must make sure the env is activated (and test the 'textExample.py' script for ImportErrors) before running jobscript:
 module load foss

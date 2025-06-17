@@ -35,18 +35,18 @@ class MeshData():
                  domain_geom = 'domedCyl', 
                  object_geom = 'sphere',
                  defect_geom = 'cylinder',
-                 domain_radius = 0.9,
-                 domain_height = 0.6,
+                 domain_radius = 1.8,
+                 domain_height = 0.8,
                  PML_thickness = 0,
-                 dome_height = 0.3,
+                 dome_height = 0.5,
                  antenna_width = 0.7625, 
                  antenna_height = 0.3625,
                  antenna_depth = 1/10,      
-                 N_antennas = 3,
+                 N_antennas = 10,
                  antenna_radius = 0,
                  antenna_z_offset = 0,
-                 object_radius = 0.26,
-                 defect_radius = 0.2,
+                 object_radius = 0.66,
+                 defect_radius = 0.4,
                  defect_height = 0.5,
                  defect_angles = [45, 67, 32],
                  viewGMSH = False,
@@ -172,7 +172,7 @@ class MeshData():
         t1 = timer()
         gmsh.initialize()
         if self.comm.rank == self.model_rank: ## make all the definitions through the master-rank process
-            
+            gmsh.model.add('The Model') ## for the whole thing
             ## Give some mesh settings: verbosity, max. and min. mesh lengths
             gmsh.option.setNumber('General.Verbosity', self.verbosity)
             gmsh.option.setNumber("Mesh.CharacteristicLengthMin", self.h)
@@ -207,14 +207,18 @@ class MeshData():
             if(self.object_geom == 'sphere'):
                 obj = gmsh.model.occ.addSphere(0,0,0, self.object_radius) ## add it to the origin
                 matDimTags.append((self.tdim, obj)) ## the material fills the object
-            if(not self.reference):
-                if(self.defect_geom == 'cylinder'):
+            if(self.defect_geom == 'cylinder'):
+                def makeDefect(): ## use a function so I can mark corresponding cells in the reference mesh too
+                    dimTags = []
                     defect1 = gmsh.model.occ.addCylinder(0,0,-self.defect_height/2,0,0,self.defect_height, self.defect_radius) ## cylinder centered on the origin
                     ## apply some rotations around the origin, and each axis
                     gmsh.model.occ.rotate([(self.tdim, defect1)], 0, 0, 0, 1, 0, 0, self.defect_angles[0])
                     gmsh.model.occ.rotate([(self.tdim, defect1)], 0, 0, 0, 0, 1, 0, self.defect_angles[1])
                     gmsh.model.occ.rotate([(self.tdim, defect1)], 0, 0, 0, 0, 0, 1, self.defect_angles[2])
-                    defectDimTags.append((self.tdim, defect1))
+                    dimTags.append((self.tdim, defect1))
+                    return dimTags
+            if(not self.reference):
+                defectDimTags = makeDefect()
             
             ## Make the domain and the PML
             if(self.domain_geom == 'domedCyl'):
@@ -249,12 +253,16 @@ class MeshData():
                 FF_surface_dimTags = [(self.tdim, FF_surface)]
             
             # Create fragments and dimtags
-            outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + FF_surface_dimTags + defectDimTags + antennas_DimTags)
+            outDimTags, outDimTagsMap = gmsh.model.occ.fragment(pml, domain + matDimTags + defectDimTags + FF_surface_dimTags + antennas_DimTags)
+            
             removeDimTags = [] ## remove these surfaces for later addition to PEC or FF surfaces
             if(self.N_antennas > 0):
-                removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-self.N_antennas:]]]
-            defectDimTags = [x[0] for x in outDimTagsMap[4:] if x[0] not in removeDimTags]
-            if(self.object_geom=='None'): ## to avoid an error with there not being outDimTagsMap[2]
+                removeDimTags = [x for x in [y[0] for y in outDimTagsMap[-self.N_antennas:]]] ## last few should be the antennas
+            if(not self.reference):
+                defectDimTags = [x for x in outDimTagsMap[3] if x not in removeDimTags] ## not x[0] since there is only one (dim, tag) pair for the defect
+            else:
+                defectDimTags = []
+            if(self.object_geom=='None'):
                 matDimTags = []
             else:
                 matDimTags = [x for x in outDimTagsMap[2] if x not in defectDimTags+removeDimTags]
@@ -267,7 +275,10 @@ class MeshData():
             
             # Make physical groups for domains and PML
             mat_marker = gmsh.model.addPhysicalGroup(self.tdim, [x[1] for x in matDimTags])
-            defect_marker = gmsh.model.addPhysicalGroup(self.tdim, [x[1] for x in defectDimTags])
+            if(not self.reference):
+                defect_marker = gmsh.model.addPhysicalGroup(self.tdim, [x[1] for x in defectDimTags])
+            else:
+                defect_marker = -1 ## can't just put this as None, but presumably -1 will never affect anything
             domain_marker = gmsh.model.addPhysicalGroup(self.tdim, [x[1] for x in domainDimTags])
             pml_marker = gmsh.model.addPhysicalGroup(self.tdim, [x[1] for x in pmlDimTags])
             
@@ -294,6 +305,63 @@ class MeshData():
             gmsh.model.mesh.generate(self.tdim)
             #gmsh.write(self.fname) ## Write the mesh to a file. I have never actually looked at this, so I've commented it out
             
+            ## Apparently gmsh's Python bindings don't allow all that I need for the below to work...
+            #===================================================================
+            # if(self.reference): ## mark the cells corresponding to the defect now. Need to make this after mesh generation so it does not affect the meshing... there must be a better way to do this
+            #     tet_type = 4  # tetrahedron
+            #     elem_tags, elem_node_tags = gmsh.model.mesh.getElementsByType(tet_type)
+            #     elem_node_tags = np.array(elem_node_tags).reshape(-1, 4)
+            #     elem_tags = np.array(elem_tags)
+            #     node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
+            #     node_coords = node_coords.reshape(-1, 3)
+            #     tag_to_index = {tag: i for i, tag in enumerate(node_tags)}
+            #     tet_idx = np.vectorize(tag_to_index.get)(elem_node_tags)
+            #     cellcenters = node_coords[tet_idx].mean(axis=1)
+            #     
+            #     gmsh.model.add('Defect Tool') ## just the defect, since apparently gmsh has no way to check if a cell is within another object without influencing the meshing
+            #     defectDimTags = makeDefect()
+            #     gmsh.model.occ.synchronize()
+            #     gmsh.model.mesh.generate(2)
+            #      
+            #     node_tags_t, node_coords_t, _ = gmsh.model.mesh.getNodes()
+            #     node_coords_t = node_coords_t.reshape(-1, 3)
+            #     tag_to_index_t = {tag: i for i, tag in enumerate(node_tags_t)}
+            #     tri_type = 2
+            #     _, elem_node_tags_t = gmsh.model.mesh.getElementsByType(tri_type)
+            #     tris = np.array(elem_node_tags_t).reshape(-1, 3)
+            #     tris = np.vectorize(tag_to_index_t.get)(tris)
+            #     tool_mesh = trimesh.Trimesh(vertices=node_coords_t, faces=tris, process=True)
+            #     
+            #     inside = tool_mesh.contains(cellcenters)
+            #     inside_tags = elem_tags[inside]
+            #     
+            #     
+            #     #===============================================================
+            #     # defect_surfaces = gmsh.model.getBoundary(defectDimTags, oriented=False, recursive=True)
+            #     # defect_faces = [s[1] for s in defect_surfaces if s[0] == 2] ## dimension 2 surfaces only
+            #     # distf = gmsh.model.mesh.field.add("Distance")
+            #     # gmsh.model.mesh.field.setNumbers(distf, "FacesList", defect_faces)
+            #     # gmsh.model.mesh.field.setAsBackgroundMesh(0) ## not sure what this does
+            #     # tet_type = 4  # tetrahedra
+            #     # _, elem_nodes = gmsh.model.mesh.getElementsByType(tet_type)
+            #     # elem_nodes = np.array(elem_nodes).reshape(-1, 4) - 1  # zero-based indexing
+            #     # node_tags, node_coords, _ = gmsh.model.mesh.getNodes()
+            #     # coords = node_coords.reshape(-1, 3)
+            #     # barycenters = coords[elem_nodes].mean(axis=1)
+            #     # distances = gmsh.model.mesh.field.evaluate(distf, barycenters.flatten().tolist())
+            #     # defect_cells = np.array([1 if d < self.h/10 else 0 for d in distances])
+            #     # print(f"Marked {defect_cells.sum()} / {len(defect_cells)} cells inside defect.")
+            #     # defect_cell_idx = np.nonzero(defect_cells)[0]
+            #     # entities_to_mark = [(3, int(elem)) for elem in defect_cell_idx.tolist()]
+            #     # defect_marker = gmsh.model.addPhysicalGroup(self.tdim, entities_to_mark)
+            #     #===============================================================
+            #      
+            #     gmsh.model.remove() ## Removes the activate model. 
+            #     gmsh.model.setCurrent('The Model')
+            #     defect_marker = gmsh.model.addPhysicalGroup(self.tdim, [])
+            #     gmsh.model.mesh.setPhysicalGroup(self.tdim, defect_marker, inside_tags.tolist())
+            #===================================================================
+                
             if(viewGMSH):
                 gmsh.fltk.run()
                 exit()
