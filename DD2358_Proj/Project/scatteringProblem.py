@@ -764,21 +764,22 @@ class Scatt3DProblem():
             k = 2*np.pi*freq/c0
             E = sols[b][0]('+')
             H = -1/(1j*k*eta0)*ufl.curl(E) ## or possibly B = 1/w k x E, 2*pi/freq*k*ufl.cross(khat, E)
+            
+            ## can only integrate scalars
+            F = signfactor*prefactor*ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))))*exp_kr
+            self.F_theta = dolfinx.fem.form(ufl.dot(thetaHat, F)*self.dS_farfield)
+            self.F_phi = dolfinx.fem.form(ufl.dot(phiHat, F)*self.dS_farfield)
+                
             for i in range(numAngles):
                 theta.value = angles[i,0]*pi/180 # convert to radians first
                 phi.value = angles[i,1]*pi/180
-                
-                ## can only integrate scalars
-                F = signfactor*prefactor*ufl.cross(khat, ( ufl.cross(E, n) + eta0*ufl.cross(khat, ufl.cross(n, H))))*exp_kr
-                self.F_theta = ufl.dot(thetaHat, F)*self.dS_farfield
-                self.F_phi = ufl.dot(phiHat, F)*self.dS_farfield
-                
+            
                 def evalFs(): ## evaluates the farfield in some given direction khat
                     khatnp = [np.sin(angles[i,0]*pi/180)*np.cos(angles[i,1]*pi/180), np.sin(angles[i,0]*pi/180)*np.sin(angles[i,1]*pi/180), np.cos(angles[i,0]*pi/180)] ## so I can use it in evalFs as regular numbers - not sure how else to do this
                     exp_kr.interpolate(lambda x: np.exp(1j*k*(khatnp[0]*x[0] + khatnp[1]*x[1] + khatnp[2]*x[2])), self.farfield_cells) ## not sure how to use ufl for this expression.
                     prefactor.value = 1j*k/(4*pi)
-                    F_theta = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_theta))
-                    F_phi = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(self.F_phi))
+                    F_theta = dolfinx.fem.assemble.assemble_scalar(self.F_theta)
+                    F_phi = dolfinx.fem.assemble.assemble_scalar(self.F_phi)
                     return np.array((F_theta, F_phi))
                 
                 farfieldpart = evalFs()
@@ -791,11 +792,11 @@ class Scatt3DProblem():
                     
         if(returnConvergenceVals): ## calculate and print some tests
             khatResults = np.zeros((numAngles), dtype=complex) ## should really be a real number, but somehow isnt?
-            khatCalc = ufl.dot(khat, n)*self.dS_farfield ## calculate zero from khat . n, for each angle
+            khatCalc = dolfinx.fem.form(ufl.dot(khat, n)*self.dS_farfield) ## calculate zero from khat . n, for each angle
             for i in range(numAngles):
                 theta.value = angles[i,0]*pi/180 # convert to radians first
                 phi.value = angles[i,1]*pi/180
-                khatPart = dolfinx.fem.assemble.assemble_scalar(dolfinx.fem.form(khatCalc))
+                khatPart = dolfinx.fem.assemble.assemble_scalar(khatCalc)
                 khatParts = self.comm.gather(khatPart, root=self.model_rank)
                 if(self.comm.rank == 0): ## assemble each part as it is made
                     khatResults[i] = sum(khatParts)
