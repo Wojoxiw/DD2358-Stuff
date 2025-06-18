@@ -393,14 +393,39 @@ class Scatt3DProblem():
                         
         ksp.setMonitor(TimeAbortMonitor(self.max_solver_time, self.comm))
         
+        
         #=======================================================================
-        # nullspace = PETSc.NullSpace().create(constant=True)  # type: ignore
-        # PETSc.Mat.setNearNullSpace(problem.A, nullspace)
+        # ### try nullspace stuff
+        # nullvec = dolfinx.fem.Function(self.Vspace)
+        # with nullvec.vector.localForm() as loc:
+        #     loc.set(1.0)  # Uniform constant vector field (approximate near-nullspace)
+        # for bc in bcs:
+        #     dofs = bc.dof_indices # The PETSc dof index for this BC.
+        #     with nullvec.vector.localForm() as loc:
+        #         loc.array[dofs] = 0.0
+        # norm = nullvec.vector.norm()
+        # nullvec.vector.scale(1.0/norm)
+        #     
+        # E_nulls = [] # Or try directional components
+        # for i in range(self.Vspace.mesh.geometry.dim):
+        #     v = dolfinx.fem.Function(self.Vspace)
+        #     dofmap = self.Vspace.dofmap
+        #     for cell in range(self.Vspace.mesh.topology.index_map(self.Vspace.mesh.topology.dim).size_local):
+        #         dofs = dofmap.cell_dofs(cell)
+        #         for dof in dofs:
+        #             v.vector[dof] = 1.0  # crude approximation
+        #     E_nulls.append(v)
+        #     
+        # vecs = [v.vector for v in E_nulls] + nullvec
+        # nullspace = dolfinx.la.create_petsc_nullspace(vecs, comm=self.comm, near=True)
+        # 
+        # A = problem.A  # from LinearProblem
+        # A.setNearNullSpace(nullspace)
         #=======================================================================
         
         
         #=======================================================================
-        # def monitor(ksp, its, rnorm):
+        # def monitor(ksp, its, rnorm): ## inner KSP iterations monitor
         #     if(its%1001 == 0):
         #         print(f"[Inner KSP] Iteration {its}, residual = {rnorm}")
         # ksp_inner = pc.getKSP()

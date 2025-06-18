@@ -219,8 +219,8 @@ if __name__ == '__main__':
                 if(MPInum == 1):
                     plt.show()
             
-    def testSolverSettings(h = 1/12): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
+    def testSolverSettings(h = 1/12, deg=1): # Varies settings in the ksp solver/preconditioner, plots the time and iterations a computation takes. Uses the sphere-scattering test case
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, order=deg, h=h, domain_geom='sphere', object_geom='sphere', FF_surface = True)
         settings = [] ## list of solver settings
         maxTime = 600 ## max solver time in [s], to cut off overly-long runs. Is only checked between iterations, some of which can take minutes...
         
@@ -243,7 +243,7 @@ if __name__ == '__main__':
         for i in range(num):
             if(comm.rank == model_rank):
                 print('\033[94m'+f'Run {i} with settings:',settings[i],'\033[0m')
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0*(1 - 0.01j), fem_degree=1, solver_settings=settings[i], max_solver_time=maxTime)
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=False, excitation='planewave', material_epsr=2.0*(1 - 0.01j), Nf=1, fem_degree=deg, solver_settings=settings[i], max_solver_time=maxTime)
             ts[i] = prob.calcTime
             its[i] = prob.solver_its
             norms[i] = prob.solver_norm
@@ -285,7 +285,7 @@ if __name__ == '__main__':
     #profilingMemsTimes()
     #actualProfilerRunning()
     #testFullExample(h=1/15)
-    #testSphereScattering(h=1/10, fem_degree=1, showPlots=True)
+    #testSphereScattering(h=1/4, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
     #convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')

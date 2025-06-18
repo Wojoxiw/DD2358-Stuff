@@ -48,7 +48,7 @@ def testSVD(problemName): ## Takes data files saved from a problem after running
         for n in range(Nb):
             A[n,:] = np.array(f['Function']['real_f'][str(n)]).squeeze() + 1j*np.array(f['Function']['imag_f'][str(n)]).squeeze()
             A[n,:] = A[n,idx]
-                
+        
     if (True): ## a priori
         idx = np.nonzero(np.abs(epsr_array_ref) > 1)[0] ## indices of non-air
         x = np.zeros(np.shape(A)[1])
