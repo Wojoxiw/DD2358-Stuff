@@ -363,7 +363,7 @@ class Scatt3DProblem():
         #petsc_options={**conv_sets, **self.solver_settings}
         #petsc_options={"ksp_type": "lgmres", "pc_type": "ksp", "pc_ksp_type":"gmres", 'ksp_max_it': 1, 'pc_ksp_rtol' : 1e-1, "pc_ksp_pc_type": "sor", **conv_sets}
         #petsc_options={'ksp_type': 'fgmres','ksp_gmres_restart': 1000, 'pc_type': 'ksp', "ksp_ksp_type": 'bcgs', "ksp_ksp_max_it": 100, 'ksp_pc_type': 'jacobi', **conv_sets, **self.solver_settings} ## best so far... tfqmr or bcgs
-        petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'gamg', 'pc_gamg_type': 'agg', 'pc_gamg_sym_graph': 1, 'matptap_via': 'scalable', 'pc_gamg_square_graph': 1, 'pc_gamg_reuse_interpolation': 1, **conv_sets, **self.solver_settings}
+        #petsc_options={'ksp_type': 'gmres', 'ksp_gmres_restart': 1000, 'pc_type': 'gamg', 'pc_gamg_type': 'agg', 'pc_gamg_sym_graph': 1, 'matptap_via': 'scalable', 'pc_gamg_square_graph': 1, 'pc_gamg_reuse_interpolation': 1, **conv_sets, **self.solver_settings}
         
         cache_dir = f"{str(Path.cwd())}/.cache"
         jit_options={}

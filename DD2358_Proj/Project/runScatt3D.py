@@ -110,12 +110,12 @@ if __name__ == '__main__':
         prevRuns.memTimeAppend(prob)
         postProcessing.testSVD(prob.dataFolder+prob.name)
         
-    def testSphereScattering(h = 1/12, fem_degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
+    def testSphereScattering(h = 1/12, degree=1, showPlots=False): ## run a spherical domain and object, test the far-field scattering for an incident plane-wave from a sphere vs Mie theoretical result.
         prevRuns = memTimeEstimation.runTimesMems(folder, comm, filename = filename)
-        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', order=fem_degree, object_geom='sphere', FF_surface = True)
+        refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, domain_radius=.9, PML_thickness=0.5, h=h, domain_geom='sphere', order=degree, object_geom='sphere', FF_surface = True)
         #prevRuns.memTimeEstimation(refMesh.ncells, doPrint=True, MPInum = comm.size)
         freqs = np.linspace(10e9, 12e9, 1)
-        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=True, excitation='planewave', freqs = freqs, material_epsr=2.0*(1 - 0.01j), fem_degree=fem_degree)
+        prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity=verbosity, name=runName, MPInum=MPInum, makeOptVects=True, excitation='planewave', freqs = freqs, material_epsr=2.0*(1 - 0.01j), fem_degree=degree)
         #prob.saveDofsView(prob.refMeshdata)
         #prob.saveEFieldsForAnim()
         if(showPlots):
@@ -123,9 +123,9 @@ if __name__ == '__main__':
         prob.calcFarField(reference=True, compareToMie = True, showPlots=showPlots, returnConvergenceVals=False)
         prevRuns.memTimeAppend(prob)
  
-    def convergenceTestPlots(convergence = 'meshsize'): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
+    def convergenceTestPlots(convergence = 'meshsize', deg=1): ## Runs with reducing mesh size, for convergence plots. Uses the far-field surface test case. If showPlots, show them - otherwise just save them
         if(convergence == 'meshsize'):
-            ks = np.linspace(4, 20, 7)
+            ks = np.linspace(4, 29, 7)
         elif(convergence == 'pmlR0'): ## result of this is that the value must be below 1e-2, from there further reduction matches the forward-scattering better, the back-scattering less
             ks = np.linspace(2, 15, 10)
             ks = 10**(-ks)
@@ -152,8 +152,8 @@ if __name__ == '__main__':
             elif(convergence == 'dxquaddeg'):
                 probOptions = dict(quaddeg = ks[i])
                 
-            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', order=1, FF_surface = True, **meshOptions)
-            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0*(1 - 0.01j), Nf=1, fem_degree=1, **probOptions)
+            refMesh = meshMaker.MeshData(comm, reference = True, viewGMSH = False, verbosity = verbosity, N_antennas=0, object_radius = .33, PML_thickness=0.5, domain_radius=0.9, domain_geom='sphere', order=deg, FF_surface = True, **meshOptions)
+            prob = scatteringProblem.Scatt3DProblem(comm, refMesh, verbosity = verbosity, name=runName, MPInum = MPInum, makeOptVects=False, excitation = 'planewave', material_epsr=2.0*(1 - 0.01j), Nf=1, fem_degree=deg, **probOptions)
             newval, khats, farfields, mies = prob.calcFarField(reference=True, compareToMie = False, showPlots=False, returnConvergenceVals=True) ## each return is FF surface area, khat integral at each angle, farfields+mies at each angle
             if(comm.rank == model_rank): ## only needed for main process
                 areaVals.append(newval)
@@ -287,9 +287,9 @@ if __name__ == '__main__':
     #testFullExample(h=1/15)
     #testSphereScattering(h=1/4, fem_degree=1, showPlots=True)
     #convergenceTestPlots('pmlR0')
-    #convergenceTestPlots('meshsize')
+    convergenceTestPlots('meshsize')
     #convergenceTestPlots('dxquaddeg')
-    testSolverSettings(h=1/15)
+    #testSolverSettings(h=1/15)
     
     #===========================================================================
     # for k in np.arange(10, 35, 4):
